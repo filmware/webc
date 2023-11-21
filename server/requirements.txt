@@ -1,0 +1,8 @@
+# we're building a flask app
+flask
+
+# watchdog makes flask development server faster
+watchdog
+
+# we want to have websockets
+flask-sock

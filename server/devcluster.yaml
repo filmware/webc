@@ -1,0 +1,32 @@
+startup_input: ""
+
+commands:
+  k: :scroll_up
+  j: :scroll_dn
+  u: :scroll-up-10
+  d: :scroll-dn-10
+  x: :scroll-reset
+  q: :quit
+  " ": :marker
+
+stages:
+- custom:
+    name: db
+    pre:
+    - sh: rm -rf /tmp/filmware
+    - sh: initdb -E UTF8 -U $USER --data-checksums -D /tmp/filmware/data
+    cmd: ["postgres", "-D", "/tmp/filmware/data", "-k", ".."]
+    post:
+    - logcheck:
+        regex: database system is ready to accept connections
+
+- custom:
+    name: setup
+    pre:
+    - sh: createdb -h /tmp/filmware filmware
+    - sh: psql -h /tmp/filmware filmware < db.sql
+    cmd: ["sleep", "infinity"]
+
+- custom:
+    name: flask
+    cmd: ["flask", "run"]

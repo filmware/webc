@@ -43,7 +43,7 @@ create table if not exists entries (
     --   - reason is non-null, a user-provided explanation for the edit
     --   - modifies is non-null, a list of version_uuid's
     --   - archivetime is non-null, a pagination key
-    --   - a null content a "" clip_id is a deletion of the whole entry
+    --   - a null content and null clip_id is a deletion of the whole entry
     --   - null fields in a non-null content are deleted columns
     --   - non-null fields in content are overwritten
     --   - unspecified fields in content are unaffected
@@ -111,3 +111,7 @@ create table if not exists comments (
 
     constraint comments_seq_uniq unique (srv_id, seqno)
 );
+
+-- ideas:
+create index if not exists comments_thread_idx on comments (thread_uuid);
+create index if not exists comments_comment_idx on comments (comment_uuid);

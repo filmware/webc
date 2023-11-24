@@ -61,6 +61,6 @@ if __name__ == "__main__":
         asyncio.run(ws())
         sys.exit(0)
 
-    print(f"usage: {sys.argv[0]} echo",file=sys.stderr)
-    print(f"usage: {sys.argv[0]} ws",file=sys.stderr)
+    print(f"usage: {sys.argv[0]} echo", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} ws", file=sys.stderr)
     sys.exit(1)

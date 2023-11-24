@@ -9,6 +9,11 @@ commands:
   q: :quit
   " ": :marker
 
+  r: ./fake.py r
+  e: ./fake.py e
+  t: ./fake.py t
+  c: ./fake.py c
+
 stages:
 - custom:
     name: db
@@ -25,6 +30,7 @@ stages:
     pre:
     - sh: createdb -h /tmp/filmware filmware
     - sh: psql -h /tmp/filmware filmware < db.sql
+    - sh: ./fake.py rrrrreeeeeetttttcccccccccccccccc
     cmd: ["sleep", "infinity"]
 
 - custom:

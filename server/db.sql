@@ -78,7 +78,7 @@ create table if not exists topics (
     -- streaming is a lot more natural in this direction but it seems to be
     -- the opposite of what an RDB would normally do.
     links jsonb not null,
-    archivetime jsonb not null,
+    archivetime jsonb,
 
     constraint topics_seq_uniq unique (srv_id, seqno)
 );
@@ -102,6 +102,8 @@ create table if not exists comments (
     topic_uuid uuid not null,
     proj_id int not null,
     user_id int not null,
+    -- null body means it was deleted
+    body varchar,
     -- comments may have a parent comment, like hackernews or reddit
     parent_uuid uuid,
     -- comments are ordered by when they arrive on the server
@@ -109,7 +111,7 @@ create table if not exists comments (
     -- comment edits are resolved by latest client-provided author time
     authortime timestamp not null,
     -- the client's view when the comment was made
-    archivetime jsonb not null,
+    archivetime jsonb,
 
     constraint comments_seq_uniq unique (srv_id, seqno)
 );

@@ -12,17 +12,15 @@ create table if not exists projects (
     proj_name varchar(64) not null unique
 );
 
--- a sequence shared by all of the tables (is this wise?)
-create sequence if not exists seqno as int8 start 1;
-
 -- reports is an archive table.  Really it contains two kinds of entries:
---   - original entries being added to a report, from an upload or manual action
+--   - original entries added to a report, from an upload or manual action
 --   - modified or deleted entries of an existing report
 --
 -- the report_uuid may correspond to an uploaded file that we keep somewhere.
+create sequence if not exists entries_seq as int8 start 1;
 create table if not exists entries (
     srv_id int not null default 1,
-    seqno int8 not null default nextval('seqno'),
+    seqno int8 not null default nextval('entries_seq'),
     report_uuid uuid not null,
     -- the entry in the report; not unique because edits also appear here
     entry_uuid uuid not null,
@@ -62,46 +60,50 @@ create table if not exists entries (
 create index if not exists entries_report_idx on entries (report_uuid);
 create index if not exists entries_entry_idx on entries (entry_uuid);
 
--- threads is an archive table
-create table if not exists threads (
+-- topics is an archive table; each topic has a root thread
+create sequence if not exists topics_seq as int8 start 1;
+create table if not exists topics (
     srv_id int not null default 1,
-    seqno int8 not null default nextval('seqno'),
-    thread_uuid uuid primary key,
+    seqno int8 not null default nextval('topics_seq'),
+    topic_uuid uuid,
     proj_id int not null,
     user_id int not null,
     -- TODO: creation time and such stuff
     -- TODO: user-friendly referenceable field... thread name? subject?
     --       (that feels more crud-y than archive-y...)
-    -- the moment the thread was started
+
+    -- links is all the objects this topic links to.
+    -- TODO: should there be a separate table just for streaming the reverse
+    -- lookup of "what topics are about XYZ"?
+    -- streaming is a lot more natural in this direction but it seems to be
+    -- the opposite of what an RDB would normally do.
+    links jsonb not null,
     archivetime jsonb not null,
 
-    constraint threads_seq_uniq unique (srv_id, seqno)
+    constraint topics_seq_uniq unique (srv_id, seqno)
 );
 
--- thread_links is an archive table; it is a many-to-many relationship between
--- threads and objects they are discussing; many threads can target one object,
--- and each thread may target multiple objects
-create table if not exists thread_links (
-    srv_id int not null default 1,
-    seqno int8 not null default nextval('seqno'),
-    thread_uuid uuid not null,
-    -- one of the following must be non-null
-    report_uuid uuid,  -- an entire report
-    entry_uuid uuid,   -- an entry within a report
-    version_uuid uuid, -- a particular edit
-    comment_uuid uuid, -- a thread under a comment
-
-    constraint thread_links_seq_uniq unique (srv_id, seqno)
-);
-
--- comments is an archive table
+-- comments is an archive table.  Each comment is part of a topic.  A comment
+-- may have a non-null parent, which means that comment is in response to some
+-- other comment.  All comments in response to the same comment.
+--
+-- The reason not to have explicit thread objects is that it would be common
+-- for multiple offline clients to each create their own thread in response to
+-- the same comment, so many threads would need to be merged by the client
+-- anyway.  Better to let the threading be implicit, although that implies some
+-- intelligent thread-tree-building logic in the client.  This may be a nice
+-- thing for a midend to figure out, or maybe the volume of comments in a
+-- topic is small enough that doing it client side is just fine.
+create sequence if not exists comments_seq as int8 start 1;
 create table if not exists comments (
     srv_id int not null default 1,
-    seqno int8 not null default nextval('seqno'),
+    seqno int8 not null default nextval('comments_seq'),
     comment_uuid uuid not null,
-    thread_uuid uuid not null,
+    topic_uuid uuid not null,
     proj_id int not null,
     user_id int not null,
+    -- comments may have a parent comment, like hackernews or reddit
+    parent_uuid uuid,
     -- comments are ordered by when they arrive on the server
     submissiontime timestamp not null,
     -- comment edits are resolved by latest client-provided author time
@@ -111,7 +113,5 @@ create table if not exists comments (
 
     constraint comments_seq_uniq unique (srv_id, seqno)
 );
-
--- ideas:
-create index if not exists comments_thread_idx on comments (thread_uuid);
-create index if not exists comments_comment_idx on comments (comment_uuid);
+create index if not exists comments_topic_uuid on comments (topic_uuid);
+create index if not exists comments_comment_uuid on comments (comment_uuid);

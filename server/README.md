@@ -1,4 +1,4 @@
-# Fimlware Server Protoype
+# Filmware Server Protoype
 
 ## Goals
 
@@ -22,16 +22,14 @@
 
 ## Running the server
 
-- run `pg.py`, then `flask run`
+- run `pg.py`, then `psql < db.sql`,  then `python app.py`
 - or `devcluster -c devcluster.yaml`
 
 ## REST API
 
 (tbd)
 
-## Websocket API
-
-### `/ws`
+## Websocket API (`/ws`)
 
 Protocol Summary:
 
@@ -51,6 +49,8 @@ Protocol Summary:
   promptly, but the client must handle additional responses arriving for
   that subscription, as some responses may already be in-flight.
 
+### Client Messages
+
 #### `type:subscribe`
 
 A client asks to start streaming stuff.
@@ -61,12 +61,27 @@ Example:
 {
     "type": "subscribe",
     "mux_id": 99,
-    "project_id": 7,
-    "since": [[0, 14], [1, 99]],
-    "syncid": "abc123",
-    "entries": "*",
-    "threads": "*",
-    "comments": "*"
+    "proj_id": 7,
+    "entries": {
+        "since": [[0, 14], [1, 99]],
+        # ONE OF:
+        "match": "*"
+        "match": "report_uuid", "value": "a-report-uuid"
+        "match": "user_id", "value": 314
+    },
+    "topics": {
+        "since": [[0, 14], [1, 99]],
+        # ONE OF:
+        "match": "*"
+        "match": "user_id", "value": 314
+    },
+    "comments": {
+        "since": [[0, 14], [1, 99]],
+        # ONE OF:
+        "match": "*",
+        "match": "topic_uuid", "value": "a-topic-uuid"
+        "match": "user_id", "value": 314
+    }
 }
 ```
 
@@ -77,11 +92,8 @@ Example:
 - `since` is a list of the highest client-known (`server_id`, `seqno`) values
   for this subscription
 - `entries` (optional) is a spec for which entries should be streamed.
-  Currently only `*` is supported.
-- `threads` (optional) is a spec for which threads should be streamed.
-  Currently only `*` is supported.
+- `topics` (optional) is a spec for which topics should be streamed.
 - `comments` (optional) is a spec for which comments should be streamed.
-  Currently only `*` is supported.
 
 #### `type:close`
 
@@ -96,6 +108,8 @@ Example:
 }
 ```
 
+### Server Messages
+
 #### `type:sync`
 
 A server tells a client a particular stream has finished its initial payload.
@@ -109,26 +123,39 @@ Example:
 }
 ```
 
-#### `type:thread`
+#### `type:closed`
 
-A server tells a client about a thread.
+A server tells a client that a close is completed.
 
 Example:
 
 ```
 {
-    "type": "thread",
+    "type": "closed",
+    "mux_id": 99
+}
+```
+
+#### `type:topic`
+
+A server tells a client about a topic.
+
+Example:
+
+```
+{
+    "type": "topic",
     "mux_id": 99,
     "srv_id": 1,
     "seqno", 1072,
     "proj_id": 7,
-    "user_uuid": 314,
+    "topic_uuid": 1,
+    "user_id": 314,
     "archivetime": [[0,99], [1,199]],
     ... other stuff tbd ...
     "links": [
         ["report", "a-report-uuid"],
-        ["comment", "a-comment-uuid"],
-        ["entity", "an-entity-uuid"],
+        ["entry", "an-entry-uuid"],
         ["version", "a-version-uuid"]
     ]
 }
@@ -136,10 +163,9 @@ Example:
 
 Note that multiple links are allowed, and each has a different meaning:
 
-- `report`: a thread in response to an entire report
-- `entry`: a thread in response to a row of a report
-- `version`: a thread in response to a particular edit
-- `comment`: a thread in response to a particular comment (arbitrary nesting)
+- `report`: a topic about an entire report
+- `entry`: a topic about a row of a report
+- `version`: a topic about a particular edit
 
 #### `type:comment`
 

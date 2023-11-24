@@ -1,8 +1,8 @@
 startup_input: ""
 
 commands:
-  k: :scroll_up
-  j: :scroll_dn
+  k: :scroll-up
+  j: :scroll-dn
   u: :scroll-up-10
   d: :scroll-dn-10
   x: :scroll-reset
@@ -28,5 +28,5 @@ stages:
     cmd: ["sleep", "infinity"]
 
 - custom:
-    name: flask
-    cmd: ["flask", "run"]
+    name: app
+    cmd: ["python3", "./app.py"]

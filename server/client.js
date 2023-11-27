@@ -13,7 +13,7 @@ class FWClient {
         // state
         this.unsent = [];
         this.recvd = [];
-        this.subs = {};
+        this.subs = new Map();
         this.socket_connected = false;
         this.socket_close_started = false;
         this.socket_close_done = false;
@@ -80,7 +80,6 @@ class FWClient {
         }
 
         if (this.want_close || this.error) {
-            console.log(this);
             this.advance_dn();
         }
     }
@@ -123,7 +122,9 @@ class FWClient {
         // we're done now
         this.down_dn = true;
 
-        always_callback(this.onclose, this.error);
+        if(this.onclose){
+            setTimeout(() => {this.onclose(this.error)});
+        }
     }
 
     // external API //
@@ -158,6 +159,7 @@ class FWSubscription {
         // state
         this.presync = [];
         this.synced = false;
+        this.closed = false;
 
         // callback API //
 
@@ -176,12 +178,9 @@ class FWSubscription {
 
     healthy_callback(func, ...args) {
         if(!func) return;
-        setTimeout(() => { if(!this.client.want_close) func(...args); });
-    }
-
-    always_callback(func, ...args) {
-        if(!func) return;
-        setTimeout(() => { func(...args); });
+        setTimeout(() => {
+            if(!this.closed && !this.client.want_close) func(...args);
+        });
     }
 
     // a message arrives from the client object
@@ -210,6 +209,7 @@ class FWSubscription {
 
     // external API //
     close() {
+        this.closed = true;
         this.client.unsent.push({"type": "close", "mux_id": this.mux_id});
         this.client.subs.delete(this.mux_id);
         this.client.schedule(null);
@@ -218,16 +218,30 @@ class FWSubscription {
 
 let client = new FWClient("ws://localhost:8080/ws");
 
-sub = client.subscribe({"proj_id": 1, "comments": {"match": "*"}});
+/* Get a subscription to get a list of topics, we'll pick the first one and
+   discard the rest. */
+let sub = client.subscribe({"proj_id": 1, "topics": {"match": "*"}});
 
-sub.onsync = (payload) => {
-    console.log("--- sync!");
-    for(let i = 0; i < payload.length; i++){
-        console.log(`payload[${i}]: ${payload[i]}`);
-    }
-    console.log("---");
-};
+sub.onpresyncmsg = (msg) => {
+    topic_uuid = msg.topic_uuid;
+    console.log(`subscribing to topic_uuid=${topic_uuid}`);
+    sub.close();
 
-sub.onsmg = (msg) => {
-    console.log(msg);
-};
+    // now subscribe to comments in that thread
+    sub = client.subscribe({
+        "proj_id": 1,
+        "comments": {"match": "topic_uuid", "value": topic_uuid},
+    });
+
+    sub.onsync = (payload) => {
+        console.log("--- sync!");
+        for(let i = 0; i < payload.length; i++){
+            console.log(`payload[${i}]:`, payload[i]);
+        }
+        console.log("---");
+    };
+
+    sub.onmsg = (msg) => {
+        console.log(msg);
+    };
+}

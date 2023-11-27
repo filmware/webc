@@ -115,7 +115,6 @@ class Listener:
 
     def on_notify(self, conn, pid, channel, payload):
         # synchronous!
-        log.error(f"notify: {payload}")
         obj = json.loads(payload)
         for sub in self.subs:
             sub.put(obj)
@@ -137,7 +136,7 @@ class Argno:
     def __call__(self, query):
         sections = query.split("?")
         out = [sections[0]]
-        for q in query.split("?"):
+        for q in sections[1:]:
             self.val += 1
             out.append(f"${self.val}")
             out.append(q)
@@ -371,9 +370,9 @@ class Subscription:
         self.early_streaming_results = []
 
         self.specmap = {
-            "entries": self.entries,
-            "topics": self.topics,
-            "comments": self.comments,
+            "entry": self.entries,
+            "topic": self.topics,
+            "comment": self.comments,
         }
 
     def put(self, obj):

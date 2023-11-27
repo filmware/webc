@@ -117,3 +117,24 @@ create table if not exists comments (
 );
 create index if not exists comments_topic_uuid on comments (topic_uuid);
 create index if not exists comments_comment_uuid on comments (comment_uuid);
+
+-- add NOTIFY triggers
+create or replace function stream_send() returns trigger as $$
+DECLARE
+    output jsonb = NULL;
+    extra jsonb = NULL;
+BEGIN
+    output = to_jsonb(NEW) || jsonb_object_agg('type', TG_ARGV[0]);
+    PERFORM pg_notify('stream', output::text);
+    return null;
+END;
+$$ language plpgsql;
+
+create or replace trigger comments_trigger after insert on comments
+for each row execute procedure stream_send('comment');
+
+create or replace trigger entries_trigger after insert on entries
+for each row execute procedure stream_send('entry');
+
+create or replace trigger topics_trigger after insert on topics
+for each row execute procedure stream_send('topic');

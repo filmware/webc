@@ -4,12 +4,36 @@ import asyncio
 import json
 import logging
 import sys
+import uuid
+import datetime
 
 import asyncpg
 from aiohttp import web
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("app")
+
+
+def tojson(obj, indent=None):
+
+    def jsonable(obj):
+        if isinstance(obj, (str, bool, type(None), int, float)):
+            return obj
+        if isinstance(obj, (list, tuple)):
+            return [jsonable(v) for v in obj]
+        if isinstance(obj, dict):
+            return {k: jsonable(v) for k, v in obj.items()}
+        # custom types
+        if isinstance(obj, uuid.UUID):
+            return str(obj)
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        raise TypeError(
+            f"unable to jsonify {obj!r} of type {type(obj).__name__}"
+        )
+
+    return json.dumps(jsonable(obj), indent=indent)
+
 
 
 def waitgroup(*coros):
@@ -120,7 +144,7 @@ class Argno:
         return "".join(out)
 
 
-def mkdict(typ, mux_id, itr):
+def mkdict(typ, itr):
     out = dict(itr)
     out["type"] = typ
     return out
@@ -313,7 +337,7 @@ class CommentsSpec:
                 submissiontime,
                 authortime,
                 archivetime
-            from topics
+            from comments
             {where}
             ORDER BY seqno
         """
@@ -340,7 +364,7 @@ class Subscription:
         self.proj_id = obj["proj_id"]
         self.entries = EntriesSpec.from_json(obj.get("entries"))
         self.topics = TopicsSpec.from_json(obj.get("topics"))
-        self.comments = None
+        self.comments = CommentsSpec.from_json(obj.get("comments"))
         # collect streaming results for emission after we complete our initial
         # fetch; that way we never accidentally give end users a seqno that
         # they are not allowed to store.
@@ -401,9 +425,12 @@ class Writer:
         self.q.put_nowait(obj)
 
     async def run(self):
-        while True:
-            obj = await self.q.get()
-            await self.ws.send_json(obj)
+        try:
+            while True:
+                obj = await self.q.get()
+                await self.ws.send_str(tojson(obj))
+        finally:
+            await self.ws.close()
 
 
 class UserError(Exception):
@@ -445,7 +472,7 @@ route = web.RouteTableDef()
 
 # aiohttp's built-in websocket
 @route.get("/ws")
-async def echo_handler(request):
+async def ws_handler(request):
     try:
         ws = web.WebSocketResponse()
         await ws.prepare(request)

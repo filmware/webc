@@ -108,6 +108,80 @@ Example:
 }
 ```
 
+#### `type:upload`
+
+A client uploads new objects to the server.
+
+The `"objects"` array may contain multiple new objects of any type.  The client
+must pick unique uuids for the uploaded objects.  Duplicate uploads, as defined
+by matching uuids, are discarded silently (at-least-once upload semantics).
+
+Example:
+
+```
+{
+    "type": "upload",
+    "mux_id": 99,
+    "objects": [...]
+}
+```
+
+Note that server-defined fields, like `srv_id`, `seqno`, or
+`submission_time`, are not part of the uploaded objects.  Neither is `user_id`,
+which is derived from the identity of the uploader, nor `mux_id`, which is part
+of the transport layer, not the object itself.
+
+Example `type:newcomment` object:
+
+```
+{
+    "type": "newcomment",
+    "proj_id": 7,
+    "version_uuid": "client-chosen-uuid",
+    "comment_uuid": "the-comment-uuid",
+    "topic_uuid": "the-topic-uuid",
+    "parent_uuid": "the-parent-uuid",
+    "body": "the text of the comment",
+    "authortime": "2022-01-01T17:05:00Z",
+    "archivetime": [[0,99], [1,199]]
+}
+```
+
+Example `type:newentry` object (the significance of the fields is defined in
+the `type:entry` section, below).
+
+```
+{
+    "type": "newentry",
+    "proj_id": 7,
+    "report_uuid": "the-report-uuid",
+    "entry_uuid": "the-entry-uuid",
+    "version_uuid": "client-chosen-uuid",
+    "archivetime": [[0,99], [1,199]],
+    "clip_id": ...,
+    "content": ...,
+    "modifies": ...,
+    "reason": ...
+}
+```
+
+Example `type:newtopic` object:
+
+```
+{
+    "type": "newtopic",
+    "proj_id": 7,
+    "topic_uuid": "client-chosen-uuid",
+    "archivetime": [[0,99], [1,199]],
+    ... other stuff tbd ...
+    "links": [
+        ["report", "a-report-uuid"],
+        ["entry", "an-entry-uuid"],
+        ["version", "a-version-uuid"]
+    ]
+}
+```
+
 ### Server Messages
 
 #### `type:sync`
@@ -149,7 +223,7 @@ Example:
     "srv_id": 1,
     "seqno", 1072,
     "proj_id": 7,
-    "topic_uuid": 1,
+    "topic_uuid": "the-topic-uuid",
     "user_id": 314,
     "archivetime": [[0,99], [1,199]],
     ... other stuff tbd ...
@@ -180,9 +254,12 @@ Example:
     "srv_id": 1,
     "seqno", 1055,
     "proj_id": 7,
-    "user_uuid": 314,
+    "user_id": 314,
+    "version_uuid": "the-version-uuid",
     "comment_uuid": "the-comment-uuid",
-    "thread_uuid": "the-thread-uuid",
+    "parent_uuid": "the-parent-uuid",
+    "body": "the text of the comment",
+    "topic_uuid": "the-topic-uuid",
     "submissiontime": "2022-01-01T21:19:00Z",
     "authortime": "2022-01-01T17:05:00Z"
     "archivetime": [[0,99], [1,199]]
@@ -191,6 +268,8 @@ Example:
 
 Note that multiple comments with the same `comment_uuid` indicates updates to
 a comment.  The comment with the latest `authortime` should be used.
+
+A comment with a NULL body indicates a deletion of a comment.
 
 #### `type:entry`
 
@@ -252,3 +331,24 @@ For an edit to an existing entry:
   updates an existing field's value or adds a new one.
 - if both `clip_id` and `content` are null, that represents a deletion of the
   row.
+
+#### `type:uploaded`
+
+A server responds to an upload request.
+
+The `type:uploaded` response indicates that all uploads were successful, and
+guarantees that all servers will _eventually_ know about the uploaded object.
+
+After the `type:uploaded` response it is still possible for the client to
+stream objects from another server only to find out that the uploaded object is
+not yet present; this is allowed because the `type:uploaded` repsonse does not
+guarantee that replication has completed between all servers.
+
+Example:
+
+```
+{
+    "type": "uploaded",
+    "mux_id": 99
+}
+```

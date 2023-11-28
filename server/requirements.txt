@@ -1,3 +1,2 @@
 aiohttp
 asyncpg
-simple_websocket

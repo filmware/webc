@@ -28,7 +28,6 @@ create table if not exists entries (
     version_uuid uuid primary key,
     proj_id int not null,
     user_id int not null,
-    clip_id varchar(64),
 
     -- for original entries:
     --   - report_uuid shall be unique (at least until there is an edit)
@@ -48,6 +47,7 @@ create table if not exists entries (
     --   - null clip_id is "no change"
     --   - non-null clip_id is a change to clip_id
 
+    clip_id varchar(64),
     content jsonb not null,
     modifies jsonb,
     reason varchar,
@@ -65,7 +65,7 @@ create sequence if not exists topics_seq as int8 start 1;
 create table if not exists topics (
     srv_id int not null default 1,
     seqno int8 not null default nextval('topics_seq'),
-    topic_uuid uuid,
+    topic_uuid uuid unique not null,
     proj_id int not null,
     user_id int not null,
     -- TODO: creation time and such stuff
@@ -98,6 +98,7 @@ create sequence if not exists comments_seq as int8 start 1;
 create table if not exists comments (
     srv_id int not null default 1,
     seqno int8 not null default nextval('comments_seq'),
+    version_uuid uuid unique not null,
     comment_uuid uuid not null,
     topic_uuid uuid not null,
     proj_id int not null,
@@ -107,9 +108,9 @@ create table if not exists comments (
     -- comments may have a parent comment, like hackernews or reddit
     parent_uuid uuid,
     -- comments are ordered by when they arrive on the server
-    submissiontime timestamp not null,
+    submissiontime timestamptz not null,
     -- comment edits are resolved by latest client-provided author time
-    authortime timestamp not null,
+    authortime timestamptz not null,
     -- the client's view when the comment was made
     archivetime jsonb,
 

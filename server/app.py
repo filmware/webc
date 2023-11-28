@@ -27,13 +27,26 @@ def tojson(obj, indent=None):
         if isinstance(obj, uuid.UUID):
             return str(obj)
         if isinstance(obj, datetime.datetime):
-            return obj.isoformat()
+            # .isoformat doesn't do what I want; I want utc rfc3339 stamps
+            return obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
         raise TypeError(
             f"unable to jsonify {obj!r} of type {type(obj).__name__}"
         )
 
     return json.dumps(jsonable(obj), indent=indent)
 
+def datetime_now():
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def readdatetime(x):
+    # read utf rfc3339 stamps, with optional fractional seconds
+    # add +0000 to the Z, to force timezone to utc by strptime
+    try:
+        dt = datetime.datetime.strptime(f"{x}+0000", "%Y-%m-%dT%H:%M:%S.%fZ%z")
+    except ValueError:
+        dt = datetime.datetime.strptime(f"{x}+0000", "%Y-%m-%dT%H:%M:%SZ%z")
+    return dt
 
 
 def waitgroup(*coros):
@@ -333,6 +346,7 @@ class CommentsSpec:
                 proj_id,
                 user_id,
                 parent_uuid,
+                body,
                 submissiontime,
                 authortime,
                 archivetime
@@ -462,8 +476,107 @@ class Reader:
                     raise UserError(f"unknown mux_id: {mux_id}")
                 self.l.remove_subscriber(sub)
                 self.w.put({"type": "closed", "mux_id": mux_id})
+            elif typ == "upload":
+                await self.upload(obj["objects"])
+                self.w.put({"type": "uploaded", "mux_id": mux_id})
             else:
                 raise ValueError("invalid msg type: {typ}")
+
+    async def upload(self, objects):
+        # sort objects into types
+        typed = {"newcomment":[], "newtopic": [], "newentry": []}
+        for obj in objects:
+            typed[obj["type"]].append(obj)
+
+        conn = await asyncpg.connect(
+            host="/tmp/filmware", database="filmware"
+        )
+        try:
+            # use a transaction to avoid implicit commits between inserts
+            async with conn.transaction():
+                if typed["newcomment"]:
+                    stmt = await conn.prepare("""
+                        insert into comments (
+                            proj_id,
+                            version_uuid,
+                            comment_uuid,
+                            topic_uuid,
+                            parent_uuid,
+                            body,
+                            authortime,
+                            archivetime,
+                            user_id,
+                            submissiontime
+                        ) values (
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+                        ) on conflict (version_uuid) do nothing;
+                    """)
+                    for obj in typed["newcomment"]:
+                        await stmt.fetch(
+                            obj["proj_id"],
+                            obj["version_uuid"],
+                            obj["comment_uuid"],
+                            obj["topic_uuid"],
+                            obj["parent_uuid"],
+                            obj.get("body"),
+                            readdatetime(obj["authortime"]),
+                            obj["archivetime"],
+                            1, # user_id
+                            datetime_now(),
+                        )
+                if typed["newentry"]:
+                    stmt = await conn.prepare("""
+                        insert into entries (
+                            proj_id,
+                            user_id,
+                            version_uuid,
+                            report_uuid,
+                            entry_uuid,
+                            archivetime,
+                            clip_id,
+                            content,
+                            modifies,
+                            reason
+                        ) values (
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+                        ) on conflict (version_uuid) do nothing;
+                    """)
+                    for obj in typed["newentry"]:
+                        await stmt.fetch(
+                            obj["proj_id"],
+                            1, # user_id
+                            obj["version_uuid"],
+                            obj["report_uuid"],
+                            obj["entry_uuid"],
+                            obj["archivetime"],
+                            obj.get("clip_id"),
+                            tojson(obj.get("content")),
+                            tojson(obj.get("modifies")),
+                            obj.get("reasons"),
+                        )
+                if typed["newtopic"]:
+                    stmt = await conn.prepare("""
+                        insert into topics (
+                            proj_id,
+                            user_id,
+                            topic_uuid,
+                            links,
+                            archivetime
+                        ) values (
+                            $1, $2, $3, $4, $5
+                        ) on conflict (topic_uuid) do nothing;
+                    """)
+                    for obj in typed["newtopic"]:
+                        await stmt.fetch(
+                            obj["proj_id"],
+                            1, # user_id
+                            obj["topic_uuid"],
+                            tojson(obj["links"]),
+                            obj["archivetime"],
+                        )
+        finally:
+            await conn.close()
+
 
 #### begin web app ####
 

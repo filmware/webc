@@ -271,6 +271,8 @@ async def fake_comment(conn):
 
         mode = ri(1,5) if comments else 1
 
+        version_uuid = uuid.uuid4()
+
         if mode in (1, 2):
             # add a new comment in a random thread
             comment_uuid = uuid.uuid4()
@@ -294,14 +296,16 @@ async def fake_comment(conn):
                 proj_id,
                 user_id,
                 topic_uuid,
+                version_uuid,
                 comment_uuid,
                 parent_uuid,
                 body,
                 submissiontime,
                 authortime
-            ) VALUES (1, 1, $1, $2, $3, $4, $5, $6)
+            ) VALUES (1, 1, $1, $2, $3, $4, $5, $6, $7)
             """,
             topic_uuid,
+            version_uuid,
             comment_uuid,
             parent_uuid,
             body,

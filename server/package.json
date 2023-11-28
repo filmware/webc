@@ -1,5 +1,8 @@
 {
   "dependencies": {
     "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
   }
 }

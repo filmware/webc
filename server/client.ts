@@ -1,105 +1,112 @@
-if(typeof Websocket === "undefined"){
-    // assume we're in node; bring in a websocket package
-    var WebSocket = require('ws');
-}
+WebSocket = (typeof WebSocket === "undefined") ? require('ws') : WebSocket;
+
+type advanceUpFn = () => void;
+type advanceDnFn = (error: any) => void;
+
+interface Advanceable {
+    advanceUp: advanceUpFn;
+    advanceDn: advanceDnFn;
+};
 
 class Advancer {
-    constructor(advance_up, advance_dn) {
-        this.error = null;
-        this.canceled = false;
-        this.done_up = false;
-        this.done_dn = false;
+    error: any = null;
+    doneUp: boolean = false;
+    doneDn: boolean = false;
+    scheduled : boolean = false;
+    obj: Advanceable;
 
-        this.advance_up = advance_up;
-        this.advance_dn = advance_dn;
-    }
+    constructor(obj: Advanceable) {
+        this.obj = obj;
+    };
 
-    schedule(error) {
+    schedule(error: any) {
         if (error && !this.error) {
             this.error = error
         }
-        if (!this.done_dn && !this.scheduled) {
-            setTimeout(() => { this.advance_state(); });
+        if (!this.doneDn && !this.scheduled) {
+            setTimeout(() => { this.advanceState(); });
             this.scheduled = true;
         }
     }
 
-    advance_state() {
+    advanceState(): void {
         this.scheduled = false;
-        if (this.done_dn) {
+        if (this.doneDn) {
             // late wakeups are ignored
             return;
         }
-        if (!this.done_up && !this.error) {
+        if (!this.doneUp && !this.error) {
             try {
-                this.advance_up();
+                this.obj.advanceUp();
             } catch(error) {
                 this.error = error;
             }
         }
 
-        if (this.done_up || this.error) {
-            this.advance_dn(this.error);
+        if (this.doneUp || this.error) {
+            this.obj.advanceDn(this.error);
         }
     }
-}
+};
 
 class FWClient {
-    constructor(url) {
-        this.advancer = new Advancer(
-            () => { this.advance_up(); },
-            (e) => { this.advance_dn(e); },
-        );
+    advancer: Advancer;
+    socket: WebSocket;
 
-        // state
-        this.unsent = [];
-        this.recvd = [];
-        this.subs = new Map();
-        this.reqs = new Map();
-        this.socket_connected = false;
-        this.socket_close_started = false;
-        this.socket_close_done = false;
-        this.mux_id = 0;
+    unsent: any[] = [];
+    recvd: any[] = [];
+    muxId: number = 0;
+    subs: Map<number, FWSubscription> = new Map<number, FWSubscription>;
+    reqs: Map<number, FWRequest> = new Map<number, FWRequest>;
+
+    socketConnected: boolean = false;
+    socketCloseStarted: boolean = false;
+    socketCloseDone: boolean = false;
+    wantClose: boolean
+
+    // callback API //
+    onClose?: {(error: any): void} = null;
+
+    constructor(url: string) {
+        this.advancer = new Advancer(this);
 
         this.socket = new WebSocket(url);
-        this.socket.onopen = (e) => {
-            this.socket_connected = true;
+
+        this.socket.onopen = (e: any): void => {
+            this.socketConnected = true;
             this.advancer.schedule(null);
         };
-        this.socket.onmessage = (e) => {
+        this.socket.onmessage = (e: any): void => {
             let msg = JSON.parse(e.data);
             this.recvd.push(msg);
             this.advancer.schedule(null);
         };
-        this.socket.onclose = (e) => {
-            this.socket_close_done = true;
+        this.socket.onclose = (e: any): void => {
+            this.socketCloseDone = true;
             let error = null;
-            if (!this.want_close) {
+            if (!this.wantClose) {
                 error = "closed early";
             }
             this.advancer.schedule(error)
         };
-        this.socket.onerror = (error) => {
+        this.socket.onerror = (error: any): void => {
             // discard the error if we closed the websocket ourselves
             let kept_error = null;
-            if (!this.want_close) {
+            if (!this.wantClose) {
                 kept_error = error;
             }
             this.advancer.schedule(kept_error);
         };
-
-        // callback API //
-        this.onclose = null;
     }
 
-    get_mux_id() {
-        this.mux_id += 1;
-        return this.mux_id;
+    GetMuxID(): number {
+        this.muxId += 1;
+        return this.muxId;
     }
 
-    advance_up() {
+    advanceUp(): void {
         // wait for a connection
-        if (!this.socket_connected) {
+        if (!this.socketConnected) {
             return;
         }
 
@@ -116,11 +123,11 @@ class FWClient {
             let req = this.reqs[msg.mux_id]
             if(req !== undefined){
                 req.finish(msg);
-                this.reqs.delete(this.mux_id);
+                this.reqs.delete(msg.mux_id);
                 continue;
             }
-            // must be a streaming mux_id that we canceled earlier
-            log.console(`unexpected mux_id: ${msg.mux_id}`);
+            // must be a streaming muxId that we canceled earlier
+            console.log(`unexpected muxId: ${msg.mux_id}`);
             return;
         }
 
@@ -130,26 +137,27 @@ class FWClient {
         }
     }
 
-    advance_dn(error) {
+    advanceDn(error: any): void {
         // make sure our socket is closed
-        if (!this.socket_close_done) {
-            if (!this.socket_close_started) {
+        if (!this.socketCloseDone) {
+            if (!this.socketCloseStarted) {
                 this.socket.close();
             }
             return;
         }
 
         // we're done now
-        this.advancer.done_dn = true;
+        this.advancer.doneDn = true;
 
-        if(this.onclose){
-            setTimeout(() => {this.onclose(error)});
+        if(this.onClose){
+            setTimeout(() => {this.onClose(error)});
         }
     }
 
     // external API //
     close() {
-        this.advancer.done_up = true;
+        this.wantClose = true;
+        this.advancer.doneUp = true;
         this.advancer.schedule(null);
     }
 
@@ -157,28 +165,28 @@ class FWClient {
              message except mux_id and type */
     subscribe(spec){
         // can these be const?  I don't know how that works.
-        let mux_id = this.get_mux_id();
+        let muxId = this.GetMuxID();
         let msg = {
             "type": "subscribe",
-            "mux_id": mux_id,
+            "mux_id": muxId,
             ...spec,
         };
-        let sub = new FWSubscription(this, mux_id);
-        this.subs[mux_id] = sub;
+        let sub = new FWSubscription(this, muxId);
+        this.subs[muxId] = sub;
         this.unsent.push(msg);
         this.advancer.schedule(null);
         return sub;
     }
 
     upload(objects){
-        let mux_id = this.get_mux_id();
+        let muxId = this.GetMuxID();
         let msg = {
             "type": "upload",
-            "mux_id": mux_id,
+            "mux_id": muxId,
             "objects": objects
         };
-        let req = new FWRequest(this, mux_id);
-        this.reqs[mux_id] = req;
+        let req = new FWRequest(this, muxId);
+        this.reqs[muxId] = req;
         this.unsent.push(msg);
         this.advancer.schedule(null);
         return req;
@@ -186,47 +194,49 @@ class FWClient {
 }
 
 class FWSubscription {
-    constructor(client, mux_id) {
+    client: FWClient;
+    muxId: number;
+
+    presync: any[] = [];
+
+    synced: boolean = false;
+    closed: boolean = false;
+
+    // callback API //
+    /* onPreSyncMsg returns messages prior to the synchronization message.
+       If unset, onSync will return all messages in a single callback.  It is
+       assumed onPreSyncMsg will be unset unless the consumer is collecting a
+       very large amount of data and wants to process it as it arrives, rather
+       than buffer everything in memory. */
+    onPreSyncMsg?: {(msg: any): void} = null;
+    /* onSync returns the whole initial payload, unless onPreSyncMsg was
+       set, in which case it returns an empty list of messages. */
+    onSync?: {(payload: any[]): void} = null;
+    // onMsg returns individual messages which arrive after the sync message.
+    onMsg?: {(msg: any): void} = null;
+
+    constructor(client, muxId) {
         this.client = client;
-        this.mux_id = mux_id;
-
-        // state
-        this.presync = [];
-        this.synced = false;
-        this.closed = false;
-
-        // callback API //
-
-        /* onpresyncmsg returns messages prior to the synchronization message.
-           If unset, onsync will return all messages in a single callback.
-           It is assumed onpresyncmsg will be unset unless the consumer is
-           collecting a very large amount of data and wants to process it as
-           it arrives, rather than buffer everything in memory. */
-        this.onpresyncmsg = null;
-        /* onsync returns the whole initial payload, unless onpresyncmsg was
-           set, in which case it returns an empty list of messages */
-        this.onsync = null;
-        // onmsg returns individual messages after the sync msg arrives
-        this.onmsg = null;
+        this.muxId = muxId;
     }
 
-    healthy_callback(func, ...args) {
+    healthyCallback(func, ...args: any[]): void {
         if(!func) return;
         setTimeout(() => {
-            if(!this.closed && !this.client.want_close) func(...args);
+            if(!this.closed && !this.client.wantClose) func(...args);
         });
     }
 
     // a message arrives from the client object
-    put(msg) {
+    put(msg): void {
         if(this.synced){
-            // after sync, always call onmsg
-            this.healthy_callback(this.onmsg, msg);
+            // after sync, always call onMsg
+            this.healthyCallback(this.onMsg, msg);
             return;
         }
-        if(this.onpresyncmsg){
+        if(this.onPreSyncMsg){
             // before sync, client can request individual messages
-            this.healthy_callback(this.onpresyncmsg, msg);
+            this.healthyCallback(this.onPreSyncMsg, msg);
             return;
         }
         if(msg.type == "sync") {
@@ -234,7 +244,7 @@ class FWSubscription {
             this.synced = true;
             let payload = this.presync;
             this.presync = null;
-            this.healthy_callback(this.onsync, payload);
+            this.healthyCallback(this.onSync, payload);
             return;
         }
         // buffer presync message and keep waiting for sync
@@ -242,31 +252,32 @@ class FWSubscription {
     }
 
     // external API //
-    close() {
+    close(): void {
         this.closed = true;
-        this.client.unsent.push({"type": "close", "mux_id": this.mux_id});
-        this.client.subs.delete(this.mux_id);
+        this.client.unsent.push({"type": "close", "mux_id": this.muxId});
+        this.client.subs.delete(this.muxId);
         this.client.advancer.schedule(null);
     }
 }
 
 class FWRequest {
-    constructor(client, mux_id) {
+    client: FWClient;
+    muxId: number;
+    finished: boolean = false;
+
+    // callback API //
+    onFinish?: {(): void} = null;
+
+    constructor(client: FWClient, muxId: number) {
         this.client = client;
-        this.mux_id = mux_id;
-
-        this.finished = false;
-
-        // callback API //
-
-        this.onfinish = null;
+        this.muxId = muxId;
     }
 
-    finish(msg){
+    finish(msg: any): void{
         this.finished = true;
-        if(!this.onfinish) return;
+        if(!this.onFinish) return;
         setTimeout(() => {
-            if(!this.client.want_close) this.onfinish();
+            if(!this.client.wantClose) this.onFinish();
         });
     }
 
@@ -274,41 +285,41 @@ class FWRequest {
 }
 
 class Demo {
+    client: FWClient;
+    advancer: Advancer;
+
+    sub?: FWSubscription = null;
+
+    // state
+    topic_uuid?: string = null;
+    report_uuid?: string = null;
+
+    finding_topic: boolean = false;
+    finding_report: boolean = false;
+    upload_started: boolean = false;
+    upload_done: boolean = false;
+    stream_started: boolean = false;
+
     constructor(){
         this.client = new FWClient("ws://localhost:8080/ws");
-        this.client.onclose = (error) => {
+        this.client.onClose = (error) => {
             if(error === null){
                 error = "client closed unexpectedly";
             }
             this.advancer.schedule(error);
         }
 
-        this.advancer = new Advancer(
-            () => { this.advance_up(); },
-            (e) => { this.advance_dn(e); },
-        );
-
-
-        // collect any valid topic_uuid and report_uuid
-        this.topic_uuid = null;
-        this.report_uuid = null;
-
-        // state flags
-        this.finding_topic = false;
-        this.finding_report = false;
-        this.upload_started = false;
-        this.upload_done = false;
-        this.stream_started = false;
+        this.advancer = new Advancer(this);
     }
 
-    advance_up(){
+    advanceUp(){
         // find a valid topic_uuid
         if(!this.finding_topic){
             this.finding_topic = true;
             this.sub = this.client.subscribe(
                 {"proj_id": 1, "topics": {"match": "*"}}
             );
-            this.sub.onpresyncmsg = (msg) => {
+            this.sub.onPreSyncMsg = (msg) => {
                 this.topic_uuid = msg.topic_uuid;
                 console.log(`found topic_uuid=${this.topic_uuid}`);
                 this.sub.close();
@@ -323,7 +334,7 @@ class Demo {
             this.sub = this.client.subscribe(
                 {"proj_id": 1, "entries": {"match": "*"}}
             );
-            this.sub.onpresyncmsg = (msg) => {
+            this.sub.onPreSyncMsg = (msg) => {
                 this.report_uuid = msg.report_uuid;
                 console.log(`found report_uuid=${this.report_uuid}`);
                 this.sub.close();
@@ -336,7 +347,7 @@ class Demo {
         if(!this.upload_started){
             console.log("upload starting");
             this.upload_started = true;
-            this.req = this.client.upload([
+            let req = this.client.upload([
                 {
                     "type": "newcomment",
                     "proj_id": 1,
@@ -368,7 +379,7 @@ class Demo {
                     "reason": null,
                 },
             ]);
-            this.req.onfinish = () => {
+            req.onFinish = () => {
                 this.upload_done = true;
                 this.advancer.schedule(null);
             };
@@ -383,7 +394,7 @@ class Demo {
                 "comments": {"match": "topic_uuid", "value": this.topic_uuid},
             });
 
-            this.sub.onsync = (payload) => {
+            this.sub.onSync = (payload) => {
                 console.log("--- sync!");
                 for(let i = 0; i < payload.length; i++){
                     console.log(`payload[${i}]:`, payload[i]);
@@ -391,17 +402,17 @@ class Demo {
                 console.log("---");
             };
 
-            this.sub.onmsg = (msg) => {
+            this.sub.onMsg = (msg) => {
                 console.log(msg);
             };
         }
     }
 
-    advance_dn(error){
+    advanceDn(error){
         console.log("demo exited with error:", error);
-        this.advancer.done_dn = true;
+        this.advancer.doneDn = true;
     }
 }
 
-demo = new Demo();
+let demo = new Demo();
 demo.advancer.schedule(null);

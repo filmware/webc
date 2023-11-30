@@ -291,9 +291,9 @@ class Demo {
     sub?: FWSubscription = null;
 
     // state
-    project_uuid?: string = null;
-    topic_uuid?: string = null;
-    report_uuid?: string = null;
+    project?: string = null;
+    topic?: string = null;
+    report?: string = null;
 
     finding_project: boolean = false;
     finding_topic: boolean = false;
@@ -315,48 +315,48 @@ class Demo {
     }
 
     advanceUp(){
-        // find a valid project_uuid
+        // find a valid project
         if(!this.finding_project){
             this.finding_project = true;
             this.sub = this.client.subscribe({"projects": {"match": "*"}});
             this.sub.onPreSyncMsg = (msg) => {
-                this.project_uuid = msg.project_uuid;
-                console.log(`found project_uuid=${this.project_uuid}`, msg);
+                this.project = msg.project;
+                console.log(`found project=${this.project}`, msg);
                 this.sub.close();
                 this.advancer.schedule(null);
             }
         }
-        if(!this.project_uuid) return;
+        if(!this.project) return;
 
-        // find a valid topic_uuid
+        // find a valid topic
         if(!this.finding_topic){
             this.finding_topic = true;
             this.sub = this.client.subscribe(
-                {"topics": {"match": "project_uuid", "value": this.project_uuid}}
+                {"topics": {"match": "project", "value": this.project}}
             );
             this.sub.onPreSyncMsg = (msg) => {
-                this.topic_uuid = msg.topic_uuid;
-                console.log(`found topic_uuid=${this.topic_uuid}`);
+                this.topic = msg.topic;
+                console.log(`found topic=${this.topic}`);
                 this.sub.close();
                 this.advancer.schedule(null);
             }
         }
-        if(!this.topic_uuid) return;
+        if(!this.topic) return;
 
-        // find a valid report_uuid
+        // find a valid report
         if(!this.finding_report){
             this.finding_report = true;
             this.sub = this.client.subscribe(
-                {"entries": {"match": "project_uuid", "value": this.project_uuid}}
+                {"entries": {"match": "project", "value": this.project}}
             );
             this.sub.onPreSyncMsg = (msg) => {
-                this.report_uuid = msg.report_uuid;
-                console.log(`found report_uuid=${this.report_uuid}`);
+                this.report = msg.report;
+                console.log(`found report=${this.report}`);
                 this.sub.close();
                 this.advancer.schedule(null);
             }
         }
-        if(!this.report_uuid) return;
+        if(!this.report) return;
 
         // upload some example data
         if(!this.upload_started){
@@ -365,31 +365,31 @@ class Demo {
             let req = this.client.upload([
                 {
                     "type": "newcomment",
-                    "project_uuid": this.project_uuid,
-                    "version_uuid": crypto.randomUUID(),
-                    "comment_uuid": crypto.randomUUID(),
-                    "topic_uuid": this.topic_uuid,
-                    "parent_uuid": null,
+                    "project": this.project,
+                    "version": crypto.randomUUID(),
+                    "comment": crypto.randomUUID(),
+                    "topic": this.topic,
+                    "parent": null,
                     "body": "an uploaded comment",
                     "authortime": "2022-01-01T17:05:00Z",
                     "archivetime": null,
                 },
                 {
                     "type": "newtopic",
-                    "project_uuid": this.project_uuid,
-                    "version_uuid": crypto.randomUUID(),
-                    "topic_uuid": crypto.randomUUID(),
+                    "project": this.project,
+                    "version": crypto.randomUUID(),
+                    "topic": crypto.randomUUID(),
                     "name": "really, another sequel??",
                     "authortime": "2022-01-01T17:05:00Z",
                     "archivetime": null,
-                    "links": ["report", this.report_uuid],
+                    "links": ["report", this.report],
                 },
                 {
                     "type": "newentry",
-                    "project_uuid": this.project_uuid,
-                    "report_uuid": this.report_uuid,
-                    "entry_uuid": crypto.randomUUID(),
-                    "version_uuid": crypto.randomUUID(),
+                    "project": this.project,
+                    "report": this.report,
+                    "entry": crypto.randomUUID(),
+                    "version": crypto.randomUUID(),
                     "archivetime": null,
                     "clip_id": "11a",
                     "content": {"col-a": "val-a", "col-b": "val-b"},
@@ -408,7 +408,7 @@ class Demo {
             this.stream_started = true;
             // now subscribe to comments in the topic we found
             this.sub = this.client.subscribe({
-                "comments": {"match": "topic_uuid", "value": this.topic_uuid},
+                "comments": {"match": "topic", "value": this.topic},
             });
 
             this.sub.onSync = (payload) => {

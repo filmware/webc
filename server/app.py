@@ -226,7 +226,7 @@ class ProjectsSpec(SubscriptionSpec):
         for s in since:
             if len(s) != 2:
                 raise UserError(f"invalid projects.since ({s})")
-        if match not in ("*", "project_uuid"):
+        if match not in ("*", "project"):
             raise UserError(f"invalid projects.match ({match})")
         if value is None and match != "*":
             raise UserError(f"invalid projects.match ({match})")
@@ -243,10 +243,10 @@ class ProjectsSpec(SubscriptionSpec):
             select
                 srv_id,
                 seqno,
-                version_uuid,
-                project_uuid,
+                version,
+                project,
                 name,
-                user_uuid,
+                "user",
                 submissiontime,
                 authortime,
                 archivetime
@@ -264,7 +264,7 @@ class ProjectsSpec(SubscriptionSpec):
 
 class UsersSpec(SubscriptionSpec):
     fieldname = "users"
-    matchables = ("project_uuid", "user_uuid")
+    matchables = ("project", "user")
 
     async def fetch_initial(self, conn):
         where, args = self.where()
@@ -272,8 +272,8 @@ class UsersSpec(SubscriptionSpec):
             select
                 srv_id,
                 seqno,
-                version_uuid,
-                user_uuid,
+                version,
+                "user",
                 name,
                 -- email,
                 -- password,
@@ -294,7 +294,7 @@ class UsersSpec(SubscriptionSpec):
 
 class PermissionsSpec(SubscriptionSpec):
     fieldname = "permissions"
-    matchables = ("project_uuid", "user_uuid")
+    matchables = ("project", "user")
 
     async def fetch_initial(self, conn):
         where, args = self.where()
@@ -302,12 +302,12 @@ class PermissionsSpec(SubscriptionSpec):
             select
                 srv_id,
                 seqno,
-                version_uuid,
-                user_uuid,
-                project_uuid,
+                version,
+                "user",
+                project,
                 kind,
                 enable,
-                author_uuid,
+                author,
                 submissiontime,
                 authortime,
                 archivetime
@@ -326,7 +326,7 @@ class PermissionsSpec(SubscriptionSpec):
 
 class EntriesSpec(SubscriptionSpec):
     fieldname = "entries"
-    matchables = ("project_uuid", "report_uuid", "user_uuid")
+    matchables = ("project", "report", "user")
 
     async def fetch_initial(self, conn):
         where, args = self.where()
@@ -334,10 +334,10 @@ class EntriesSpec(SubscriptionSpec):
             select
                 srv_id,
                 seqno,
-                report_uuid,
-                entry_uuid,
-                project_uuid,
-                user_uuid,
+                report,
+                entry,
+                project,
+                "user",
                 clip_id,
                 content,
                 modifies,
@@ -357,7 +357,7 @@ class EntriesSpec(SubscriptionSpec):
 
 class TopicsSpec(SubscriptionSpec):
     fieldname = "topics"
-    matchables = ("project_uuid", "user_uuid")
+    matchables = ("project", "user")
 
     async def fetch_initial(self, conn):
         where, args = self.where()
@@ -365,9 +365,9 @@ class TopicsSpec(SubscriptionSpec):
             select
                 srv_id,
                 seqno,
-                topic_uuid,
-                project_uuid,
-                user_uuid,
+                topic,
+                project,
+                "user",
                 links,
                 archivetime
             from topics
@@ -384,7 +384,7 @@ class TopicsSpec(SubscriptionSpec):
 
 class CommentsSpec(SubscriptionSpec):
     fieldname = "comments"
-    matchables = ("project_uuid", "topic_uuid", "user_uuid")
+    matchables = ("project", "topic", "user")
 
     async def fetch_initial(self, conn):
         where, args = self.where()
@@ -392,11 +392,11 @@ class CommentsSpec(SubscriptionSpec):
             select
                 srv_id,
                 seqno,
-                comment_uuid,
-                topic_uuid,
-                project_uuid,
-                user_uuid,
-                parent_uuid,
+                comment,
+                topic,
+                project,
+                "user",
+                parent,
                 body,
                 submissiontime,
                 authortime,
@@ -544,27 +544,27 @@ class Reader:
                 if typed["newcomment"]:
                     stmt = await conn.prepare("""
                         insert into comments (
-                            project_uuid,
-                            version_uuid,
-                            comment_uuid,
-                            topic_uuid,
-                            parent_uuid,
+                            project,
+                            version,
+                            comment,
+                            topic,
+                            parent,
                             body,
                             authortime,
                             archivetime,
-                            user_uuid,
+                            "user",
                             submissiontime
                         ) values (
                             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
-                        ) on conflict (version_uuid) do nothing;
+                        ) on conflict (version) do nothing;
                     """)
                     for obj in typed["newcomment"]:
                         await stmt.fetch(
-                            obj["project_uuid"],
-                            obj["version_uuid"],
-                            obj["comment_uuid"],
-                            obj["topic_uuid"],
-                            obj["parent_uuid"],
+                            obj["project"],
+                            obj["version"],
+                            obj["comment"],
+                            obj["topic"],
+                            obj["parent"],
                             obj.get("body"),
                             readdatetime(obj["authortime"]),
                             obj["archivetime"],
@@ -574,11 +574,11 @@ class Reader:
                 if typed["newentry"]:
                     stmt = await conn.prepare("""
                         insert into entries (
-                            project_uuid,
-                            user_uuid,
-                            version_uuid,
-                            report_uuid,
-                            entry_uuid,
+                            project,
+                            "user",
+                            version,
+                            report,
+                            entry,
                             archivetime,
                             clip_id,
                             content,
@@ -586,15 +586,15 @@ class Reader:
                             reason
                         ) values (
                             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
-                        ) on conflict (version_uuid) do nothing;
+                        ) on conflict (version) do nothing;
                     """)
                     for obj in typed["newentry"]:
                         await stmt.fetch(
-                            obj["project_uuid"],
+                            obj["project"],
                             USER_UUID,
-                            obj["version_uuid"],
-                            obj["report_uuid"],
-                            obj["entry_uuid"],
+                            obj["version"],
+                            obj["report"],
+                            obj["entry"],
                             obj["archivetime"],
                             obj.get("clip_id"),
                             tojson(obj.get("content")),
@@ -604,10 +604,10 @@ class Reader:
                 if typed["newtopic"]:
                     stmt = await conn.prepare("""
                         insert into topics (
-                            project_uuid,
-                            user_uuid,
-                            version_uuid,
-                            topic_uuid,
+                            project,
+                            "user",
+                            version,
+                            topic,
                             name,
                             links,
                             archivetime,
@@ -615,14 +615,14 @@ class Reader:
                             submissiontime
                         ) values (
                             $1, $2, $3, $4, $5, $6, $7, $8, $9
-                        ) on conflict (version_uuid) do nothing;
+                        ) on conflict (version) do nothing;
                     """)
                     for obj in typed["newtopic"]:
                         await stmt.fetch(
-                            obj["project_uuid"],
+                            obj["project"],
                             USER_UUID,
-                            obj["version_uuid"],
-                            obj["topic_uuid"],
+                            obj["version"],
+                            obj["topic"],
                             obj["name"],
                             tojson(obj.get("links")),
                             obj["archivetime"],

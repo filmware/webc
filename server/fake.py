@@ -17,9 +17,9 @@ import asyncpg
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("fake")
 
-USER_UUID = "0fe07a2c-59d1-4f65-a8a8-e0b4269c32ef"
-PROJ_UUID = "aeb2c3f0-a645-44a9-b6f6-9cb7152c0163"
-PROJ_VERSION_UUID = "45d56af6-5403-4736-9b3c-04a08fa68c9a"
+USER = "0fe07a2c-59d1-4f65-a8a8-e0b4269c32ef"
+PROJ = "aeb2c3f0-a645-44a9-b6f6-9cb7152c0163"
+PROJ_VERSION = "45d56af6-5403-4736-9b3c-04a08fa68c9a"
 
 _dickens = None
 
@@ -60,10 +60,10 @@ def ri(a, b):
 
 async def fake_report(conn):
     # Create a fake report.
-    report_uuid = uuid.uuid4()
+    report = uuid.uuid4()
     for i in range(ri(5, 25)):
-        entry_uuid = uuid.uuid4()
-        version_uuid = uuid.uuid4()
+        entry = uuid.uuid4()
+        version = uuid.uuid4()
         clip_id = str(ri(1, 50)) + "abcdef"[ri(0,5)]
         content = {
             "notes": random_sentence(ri(1, 3)),
@@ -73,20 +73,20 @@ async def fake_report(conn):
         await conn.fetch(
             f"""
             insert into entries (
-                project_uuid,
-                user_uuid,
-                report_uuid,
-                entry_uuid,
-                version_uuid,
+                project,
+                "user",
+                report,
+                entry,
+                version,
                 clip_id,
                 content
             ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
-            PROJ_UUID,
-            USER_UUID,
-            report_uuid,
-            entry_uuid,
-            version_uuid,
+            PROJ,
+            USER,
+            report,
+            entry,
+            version,
             clip_id,
             json.dumps(content),
         )
@@ -100,25 +100,25 @@ def unmodified_versions(entry):
 
 async def fake_edit(conn):
     # Create a fake edit in every existing report.
-    all_report_uuids = [
-        r["report_uuid"] for r in await conn.fetch(
-            "select report_uuid from entries group by report_uuid"
+    all_reports = [
+        r["report"] for r in await conn.fetch(
+            "select report from entries group by report"
         )
     ]
-    for report_uuid in all_report_uuids:
+    for report in all_reports:
         # {entry_uuid: {version_uuid: [modifies]}}
         entries = {}
-        for entry_uuid, version_uuid, modifies in await conn.fetch(
+        for entry_uuid, version, modifies in await conn.fetch(
             """
             select
-                entry_uuid, version_uuid, modifies
+                entry, version, modifies
             from entries
-            where report_uuid = $1
+            where report = $1
             """,
-            report_uuid,
+            report,
         ):
             entry = entries.setdefault(entry_uuid, {})
-            entry[version_uuid] = modifies and json.loads(modifies)
+            entry[version] = modifies and json.loads(modifies)
 
         mode = ri(1,3)
 
@@ -135,26 +135,26 @@ async def fake_edit(conn):
                     "actors": random_word(ri(1, 10)),
                     "scene": random_word(ri(1, 3)),
                 }
-                version_uuid = uuid.uuid4()
+                version = uuid.uuid4()
                 reason = "intentional conflcit"
                 await conn.fetch(
                     """
                     insert into entries (
-                        project_uuid,
-                        user_uuid,
-                        report_uuid,
-                        entry_uuid,
-                        version_uuid,
+                        project,
+                        "user",
+                        report,
+                        entry,
+                        version,
                         content,
                         reason,
                         modifies
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     """,
-                    PROJ_UUID,
-                    USER_UUID,
-                    report_uuid,
+                    PROJ,
+                    USER,
+                    report,
                     entry_uuid,
-                    version_uuid,
+                    version,
                     json.dumps(content),
                     reason,
                     json.dumps([str(m) for m in modifies]),
@@ -177,26 +177,26 @@ async def fake_edit(conn):
                     "actors": random_word(ri(1, 10)),
                     "scene": random_word(ri(1, 3)),
                 }
-                version_uuid = uuid.uuid4()
+                version = uuid.uuid4()
                 reason = "conflict resolution"
                 await conn.fetch(
                     """
                     insert into entries (
-                        project_uuid,
-                        user_uuid,
-                        report_uuid,
-                        entry_uuid,
-                        version_uuid,
+                        project,
+                        "user",
+                        report,
+                        entry,
+                        version,
                         content,
                         reason,
                         modifies
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     """,
-                    PROJ_UUID,
-                    USER_UUID,
-                    report_uuid,
+                    PROJ,
+                    USER,
+                    report,
                     entry_uuid,
-                    version_uuid,
+                    version,
                     json.dumps(content),
                     reason,
                     json.dumps([str(m) for m in unmodified]),
@@ -214,26 +214,26 @@ async def fake_edit(conn):
                 "actors": random_word(ri(1, 10)),
                 "scene": random_word(ri(1, 3)),
             }
-            version_uuid = uuid.uuid4()
+            version = uuid.uuid4()
             reason = "conflict resolution"
             await conn.fetch(
                 """
                 insert into entries (
-                    project_uuid,
-                    user_uuid,
-                    report_uuid,
-                    entry_uuid,
-                    version_uuid,
+                    project,
+                    "user",
+                    report,
+                    entry,
+                    version,
                     content,
                     reason,
                     modifies
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 """,
-                PROJ_UUID,
-                USER_UUID,
-                report_uuid,
+                PROJ,
+                USER,
+                report,
                 entry_uuid,
-                version_uuid,
+                version,
                 json.dumps(content),
                 reason,
                 json.dumps([str(m) for m in modifies]),
@@ -245,48 +245,48 @@ async def fake_topic(conn):
     if mode == 1:
         # Modify an existing topic.
         all_topics = [
-            r["topic_uuid"] for r in await conn.fetch(
-                "select topic_uuid from topics group by topic_uuid"
+            r["topic"] for r in await conn.fetch(
+                "select topic from topics group by topic"
             )
         ]
         if not all_topics:
             mode = 2
         else:
-            version_uuid = uuid.uuid4()
-            topic_uuid = random.choice(all_topics)
+            version = uuid.uuid4()
+            topic = random.choice(all_topics)
             name = random_word(5)
             links = None
 
     if mode == 2:
         # Create a new topic.
-        version_uuid = uuid.uuid4()
-        topic_uuid = uuid.uuid4()
+        version = uuid.uuid4()
+        topic = uuid.uuid4()
         name = random_word(5)
-        all_report_uuids = [
-            r["report_uuid"] for r in await conn.fetch(
-                "select report_uuid from entries group by report_uuid"
+        all_reports = [
+            r["report"] for r in await conn.fetch(
+                "select report from entries group by report"
             )
         ]
-        random.shuffle(all_report_uuids)
-        links = [("report", str(r)) for r in all_report_uuids[:ri(0,3)]]
+        random.shuffle(all_reports)
+        links = [("report", str(r)) for r in all_reports[:ri(0,3)]]
 
     await conn.fetch(
         f"""
         insert into topics (
-            project_uuid,
-            user_uuid,
-            version_uuid,
-            topic_uuid,
+            project,
+            "user",
+            version,
+            topic,
             name,
             submissiontime,
             authortime,
             links
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         """,
-        PROJ_UUID,
-        USER_UUID,
-        version_uuid,
-        topic_uuid,
+        PROJ,
+        USER,
+        version,
+        topic,
         name,
         datetime.datetime.now(),
         datetime.datetime.now(),
@@ -295,39 +295,39 @@ async def fake_topic(conn):
 
 async def fake_comment(conn):
     # Create a comment in every existing topic.
-    all_topic_uuids = [
-        r["topic_uuid"] for r in await conn.fetch(
-            "select topic_uuid from topics group by topic_uuid"
+    all_topics = [
+        r["topic"] for r in await conn.fetch(
+            "select topic from topics group by topic"
         )
     ]
-    for topic_uuid in all_topic_uuids:
-        # {comment_uuid: parent_uuid}
+    for topic in all_topics:
+        # {comment: parent}
         comments = {
             c: p for c, p in await conn.fetch(
-                "select comment_uuid, parent_uuid "
-                "from comments where topic_uuid = $1",
-                topic_uuid,
+                "select comment, parent "
+                "from comments where topic = $1",
+                topic,
             )
         }
         threads = set(comments.values()) or set([None])
 
         mode = ri(1,5) if comments else 1
 
-        version_uuid = uuid.uuid4()
+        version = uuid.uuid4()
 
         if mode in (1, 2):
             # add a new comment in a random thread
-            comment_uuid = uuid.uuid4()
-            parent_uuid = random.choice(list(threads))
+            comment = uuid.uuid4()
+            parent = random.choice(list(threads))
 
         if mode in (3, 4):
             # modify an existing comment
-            comment_uuid, parent_uuid = random.choice(list(comments.items()))
+            comment, parent = random.choice(list(comments.items()))
 
         if mode == 5:
             # start a new thread
-            comment_uuid = uuid.uuid4()
-            parent_uuid = random.choice(list(comments))
+            comment = uuid.uuid4()
+            parent = random.choice(list(comments))
 
         body = random_sentence(ri(1,5))
         submissiontime = time.time()
@@ -335,23 +335,23 @@ async def fake_comment(conn):
         await conn.fetch(
             f"""
             insert into comments (
-                project_uuid,
-                user_uuid,
-                topic_uuid,
-                version_uuid,
-                comment_uuid,
-                parent_uuid,
+                project,
+                "user",
+                topic,
+                version,
+                comment,
+                parent,
                 body,
                 submissiontime,
                 authortime
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             """,
-            PROJ_UUID,
-            USER_UUID,
-            topic_uuid,
-            version_uuid,
-            comment_uuid,
-            parent_uuid,
+            PROJ,
+            USER,
+            topic,
+            version,
+            comment,
+            parent,
             body,
             datetime.datetime.now(),
             datetime.datetime.now(),
@@ -362,19 +362,19 @@ async def make_project(conn):
     await conn.fetch(
         f"""
         insert into projects (
-            version_uuid,
-            project_uuid,
+            version,
+            project,
             name,
-            user_uuid,
+            "user",
             submissiontime,
             authortime
         ) VALUES ($1, $2, $3, $4, $5, $6)
-        on conflict (version_uuid) do nothing;
+        on conflict (version) do nothing;
         """,
-        PROJ_VERSION_UUID,
-        PROJ_UUID,
+        PROJ_VERSION,
+        PROJ,
         "Avengers: Overkill",
-        USER_UUID,
+        USER,
         datetime.datetime.now(),
         datetime.datetime.now(),
     )

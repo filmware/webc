@@ -4,14 +4,14 @@ create table if not exists projects (
     srv_id int not null default 1,
     seqno int8 not null default nextval('projects_seq'),
     version_uuid uuid primary key,
-    proj_uuid uuid not null,
+    project_uuid uuid not null,
     name varchar(64) not null unique,
     user_uuid uuid not null,
     submissiontime timestamptz not null,
     authortime timestamptz not null,
     archivetime jsonb
 );
-create index if not exists projects_proj_idx on projects (proj_uuid);
+create index if not exists projects_project_idx on projects (project_uuid);
 
 -- users can participate in multiple projects
 create sequence if not exists users_seq as int8 start 1;
@@ -45,7 +45,7 @@ create sequence if not exists perms_seq as int8 start 1;
 create table if not exists permissions (
     version_uuid uuid primary key,
     user_uuid uuid not null,
-    proj_uuid uuid not null,
+    project_uuid uuid not null,
     kind permission_kind not null,
     enable boolean not null,
     -- who made this edit?
@@ -55,7 +55,7 @@ create table if not exists permissions (
     archivetime jsonb
 );
 create index if not exists permissions_user_idx on permissions (user_uuid);
-create index if not exists permissions_proj_idx on permissions (proj_uuid);
+create index if not exists permissions_project_idx on permissions (project_uuid);
 
 -- reports is an archive table.  Really it contains two kinds of entries:
 --   - original entries added to a report, from an upload or manual action
@@ -71,7 +71,7 @@ create table if not exists entries (
     entry_uuid uuid not null,
     -- the version of this entry; unique, but not linear
     version_uuid uuid primary key,
-    proj_uuid uuid not null,
+    project_uuid uuid not null,
     user_uuid uuid not null,
 
     -- for original entries:
@@ -112,7 +112,7 @@ create table if not exists topics (
     seqno int8 not null default nextval('topics_seq'),
     version_uuid uuid primary key,
     topic_uuid uuid not null,
-    proj_uuid uuid not null,
+    project_uuid uuid not null,
     user_uuid uuid not null,
     -- name is expected to be editable by uploading new versions of a topic
     name varchar(256) not null,
@@ -146,7 +146,7 @@ create table if not exists comments (
     version_uuid uuid primary key,
     comment_uuid uuid not null,
     topic_uuid uuid not null,
-    proj_uuid uuid not null,
+    project_uuid uuid not null,
     user_uuid uuid not null,
     -- null body means it was deleted
     body varchar,

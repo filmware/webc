@@ -244,7 +244,7 @@ class ProjectsSpec(SubscriptionSpec):
                 srv_id,
                 seqno,
                 version_uuid,
-                proj_uuid,
+                project_uuid,
                 name,
                 user_uuid,
                 submissiontime,
@@ -264,7 +264,7 @@ class ProjectsSpec(SubscriptionSpec):
 
 class UsersSpec(SubscriptionSpec):
     fieldname = "users"
-    matchables = ("proj_uuid", "user_uuid")
+    matchables = ("project_uuid", "user_uuid")
 
     async def fetch_initial(self, conn):
         where, args = self.where()
@@ -294,7 +294,7 @@ class UsersSpec(SubscriptionSpec):
 
 class PermissionsSpec(SubscriptionSpec):
     fieldname = "permissions"
-    matchables = ("proj_uuid", "user_uuid")
+    matchables = ("project_uuid", "user_uuid")
 
     async def fetch_initial(self, conn):
         where, args = self.where()
@@ -304,7 +304,7 @@ class PermissionsSpec(SubscriptionSpec):
                 seqno,
                 version_uuid,
                 user_uuid,
-                proj_uuid,
+                project_uuid,
                 kind,
                 enable,
                 author_uuid,
@@ -326,7 +326,7 @@ class PermissionsSpec(SubscriptionSpec):
 
 class EntriesSpec(SubscriptionSpec):
     fieldname = "entries"
-    matchables = ("proj_uuid", "report_uuid", "user_uuid")
+    matchables = ("project_uuid", "report_uuid", "user_uuid")
 
     async def fetch_initial(self, conn):
         where, args = self.where()
@@ -336,7 +336,7 @@ class EntriesSpec(SubscriptionSpec):
                 seqno,
                 report_uuid,
                 entry_uuid,
-                proj_uuid,
+                project_uuid,
                 user_uuid,
                 clip_id,
                 content,
@@ -357,7 +357,7 @@ class EntriesSpec(SubscriptionSpec):
 
 class TopicsSpec(SubscriptionSpec):
     fieldname = "topics"
-    matchables = ("proj_uuid", "user_uuid")
+    matchables = ("project_uuid", "user_uuid")
 
     async def fetch_initial(self, conn):
         where, args = self.where()
@@ -366,7 +366,7 @@ class TopicsSpec(SubscriptionSpec):
                 srv_id,
                 seqno,
                 topic_uuid,
-                proj_uuid,
+                project_uuid,
                 user_uuid,
                 links,
                 archivetime
@@ -384,7 +384,7 @@ class TopicsSpec(SubscriptionSpec):
 
 class CommentsSpec(SubscriptionSpec):
     fieldname = "comments"
-    matchables = ("proj_uuid", "topic_uuid", "user_uuid")
+    matchables = ("project_uuid", "topic_uuid", "user_uuid")
 
     async def fetch_initial(self, conn):
         where, args = self.where()
@@ -394,7 +394,7 @@ class CommentsSpec(SubscriptionSpec):
                 seqno,
                 comment_uuid,
                 topic_uuid,
-                proj_uuid,
+                project_uuid,
                 user_uuid,
                 parent_uuid,
                 body,
@@ -544,7 +544,7 @@ class Reader:
                 if typed["newcomment"]:
                     stmt = await conn.prepare("""
                         insert into comments (
-                            proj_uuid,
+                            project_uuid,
                             version_uuid,
                             comment_uuid,
                             topic_uuid,
@@ -560,7 +560,7 @@ class Reader:
                     """)
                     for obj in typed["newcomment"]:
                         await stmt.fetch(
-                            obj["proj_uuid"],
+                            obj["project_uuid"],
                             obj["version_uuid"],
                             obj["comment_uuid"],
                             obj["topic_uuid"],
@@ -574,7 +574,7 @@ class Reader:
                 if typed["newentry"]:
                     stmt = await conn.prepare("""
                         insert into entries (
-                            proj_uuid,
+                            project_uuid,
                             user_uuid,
                             version_uuid,
                             report_uuid,
@@ -590,7 +590,7 @@ class Reader:
                     """)
                     for obj in typed["newentry"]:
                         await stmt.fetch(
-                            obj["proj_uuid"],
+                            obj["project_uuid"],
                             USER_UUID,
                             obj["version_uuid"],
                             obj["report_uuid"],
@@ -604,7 +604,7 @@ class Reader:
                 if typed["newtopic"]:
                     stmt = await conn.prepare("""
                         insert into topics (
-                            proj_uuid,
+                            project_uuid,
                             user_uuid,
                             version_uuid,
                             topic_uuid,
@@ -619,7 +619,7 @@ class Reader:
                     """)
                     for obj in typed["newtopic"]:
                         await stmt.fetch(
-                            obj["proj_uuid"],
+                            obj["project_uuid"],
                             USER_UUID,
                             obj["version_uuid"],
                             obj["topic_uuid"],

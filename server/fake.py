@@ -73,7 +73,7 @@ async def fake_report(conn):
         await conn.fetch(
             f"""
             insert into entries (
-                proj_uuid,
+                project_uuid,
                 user_uuid,
                 report_uuid,
                 entry_uuid,
@@ -140,7 +140,7 @@ async def fake_edit(conn):
                 await conn.fetch(
                     """
                     insert into entries (
-                        proj_uuid,
+                        project_uuid,
                         user_uuid,
                         report_uuid,
                         entry_uuid,
@@ -182,7 +182,7 @@ async def fake_edit(conn):
                 await conn.fetch(
                     """
                     insert into entries (
-                        proj_uuid,
+                        project_uuid,
                         user_uuid,
                         report_uuid,
                         entry_uuid,
@@ -219,7 +219,7 @@ async def fake_edit(conn):
             await conn.fetch(
                 """
                 insert into entries (
-                    proj_uuid,
+                    project_uuid,
                     user_uuid,
                     report_uuid,
                     entry_uuid,
@@ -273,7 +273,7 @@ async def fake_topic(conn):
     await conn.fetch(
         f"""
         insert into topics (
-            proj_uuid,
+            project_uuid,
             user_uuid,
             version_uuid,
             topic_uuid,
@@ -335,7 +335,7 @@ async def fake_comment(conn):
         await conn.fetch(
             f"""
             insert into comments (
-                proj_uuid,
+                project_uuid,
                 user_uuid,
                 topic_uuid,
                 version_uuid,
@@ -363,7 +363,7 @@ async def make_project(conn):
         f"""
         insert into projects (
             version_uuid,
-            proj_uuid,
+            project_uuid,
             name,
             user_uuid,
             submissiontime,

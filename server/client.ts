@@ -291,11 +291,11 @@ class Demo {
     sub?: FWSubscription = null;
 
     // state
-    proj_uuid?: string = null;
+    project_uuid?: string = null;
     topic_uuid?: string = null;
     report_uuid?: string = null;
 
-    finding_proj: boolean = false;
+    finding_project: boolean = false;
     finding_topic: boolean = false;
     finding_report: boolean = false;
     upload_started: boolean = false;
@@ -315,24 +315,24 @@ class Demo {
     }
 
     advanceUp(){
-        // find a valid proj_uuid
-        if(!this.finding_proj){
-            this.finding_proj = true;
+        // find a valid project_uuid
+        if(!this.finding_project){
+            this.finding_project = true;
             this.sub = this.client.subscribe({"projects": {"match": "*"}});
             this.sub.onPreSyncMsg = (msg) => {
-                this.proj_uuid = msg.proj_uuid;
-                console.log(`found proj_uuid=${this.proj_uuid}`, msg);
+                this.project_uuid = msg.project_uuid;
+                console.log(`found project_uuid=${this.project_uuid}`, msg);
                 this.sub.close();
                 this.advancer.schedule(null);
             }
         }
-        if(!this.proj_uuid) return;
+        if(!this.project_uuid) return;
 
         // find a valid topic_uuid
         if(!this.finding_topic){
             this.finding_topic = true;
             this.sub = this.client.subscribe(
-                {"topics": {"match": "proj_uuid", "value": this.proj_uuid}}
+                {"topics": {"match": "project_uuid", "value": this.project_uuid}}
             );
             this.sub.onPreSyncMsg = (msg) => {
                 this.topic_uuid = msg.topic_uuid;
@@ -347,7 +347,7 @@ class Demo {
         if(!this.finding_report){
             this.finding_report = true;
             this.sub = this.client.subscribe(
-                {"entries": {"match": "proj_uuid", "value": this.proj_uuid}}
+                {"entries": {"match": "project_uuid", "value": this.project_uuid}}
             );
             this.sub.onPreSyncMsg = (msg) => {
                 this.report_uuid = msg.report_uuid;
@@ -365,7 +365,7 @@ class Demo {
             let req = this.client.upload([
                 {
                     "type": "newcomment",
-                    "proj_uuid": this.proj_uuid,
+                    "project_uuid": this.project_uuid,
                     "version_uuid": crypto.randomUUID(),
                     "comment_uuid": crypto.randomUUID(),
                     "topic_uuid": this.topic_uuid,
@@ -376,7 +376,7 @@ class Demo {
                 },
                 {
                     "type": "newtopic",
-                    "proj_uuid": this.proj_uuid,
+                    "project_uuid": this.project_uuid,
                     "version_uuid": crypto.randomUUID(),
                     "topic_uuid": crypto.randomUUID(),
                     "name": "really, another sequel??",
@@ -386,7 +386,7 @@ class Demo {
                 },
                 {
                     "type": "newentry",
-                    "proj_uuid": this.proj_uuid,
+                    "project_uuid": this.project_uuid,
                     "report_uuid": this.report_uuid,
                     "entry_uuid": crypto.randomUUID(),
                     "version_uuid": crypto.randomUUID(),

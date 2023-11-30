@@ -25,7 +25,7 @@ async def ws():
                 await ws.send_str(json.dumps({
                     "type": "subscribe",
                     "mux_id": "Z",
-                    "proj_id": 1,
+                    "project_id": 1,
                     "entries": {"match": "*"},
                     "topics": {"match": "*"},
                     "comments": {"match": "*"},
@@ -36,7 +36,7 @@ async def ws():
                 await ws.send_str(json.dumps({
                     "type": "subscribe",
                     "mux_id": "Y",
-                    "proj_id": 1,
+                    "project_id": 1,
                 }))
                 msg = await ws.receive()
                 print(msg.data)

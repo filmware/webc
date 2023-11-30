@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("app")
 
 # pretend we have an auth system
-USER_UUID = "0fe07a2c-59d1-4f65-a8a8-e0b4269c32ef"
+USER = "0fe07a2c-59d1-4f65-a8a8-e0b4269c32ef"
 
 def tojson(obj, indent=None):
 
@@ -51,7 +51,7 @@ def readdatetime(x):
     return dt
 
 
-def waitgroup(*coros):
+async def waitgroup(*coros):
     """
     Return a coroutine that propagates the first non-CancelledError from coros,
     or else waits for all to finish.
@@ -62,51 +62,48 @@ def waitgroup(*coros):
     waitgroup coroutine.
     """
 
-    async def _waitgroup():
-        tasks = [
-            asyncio.create_task(c) for c in coros if asyncio.iscoroutine(c)
-        ]
-        exc = None
-        while exc is None:
-            try:
-                done, pending = await asyncio.wait(
-                    tasks, return_when=asyncio.FIRST_EXCEPTION
-                )
-            except asyncio.CancelledError as e:
-                exc = e
-                break
+    tasks = [
+        asyncio.create_task(c) for c in coros if asyncio.iscoroutine(c)
+    ]
+    exc = None
+    while exc is None:
+        try:
+            done, pending = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_EXCEPTION
+            )
+        except asyncio.CancelledError as e:
+            exc = e
+            break
 
-            if not pending:
-                # success!
-                return
+        if not pending:
+            # success!
+            return
 
-            # grab the first exception
-            for task in done:
-                if task.exception() is None:
-                    continue
-                if isinstance(task.exception(), asyncio.CancelledError):
-                    # ignore Cancelled errors.
-                    continue
-                # found the first exception
-                exc = task.exception()
-                break
-
-        for task in tasks:
-            task.cancel()
-
-        # absolutely refuse to not wait on all our children
-        while True:
-            try:
-                await asyncio.wait(
-                    tasks, return_when=asyncio.ALL_COMPLETED
-                )
-                break
-            except asyncio.CancelledError:
+        # grab the first exception
+        for task in done:
+            if task.exception() is None:
                 continue
+            if isinstance(task.exception(), asyncio.CancelledError):
+                # ignore Cancelled errors.
+                continue
+            # found the first exception
+            exc = task.exception()
+            break
 
-        raise exc
+    for task in tasks:
+        task.cancel()
 
-    return _waitgroup()
+    # absolutely refuse to not wait on all our children
+    while True:
+        try:
+            await asyncio.wait(
+                tasks, return_when=asyncio.ALL_COMPLETED
+            )
+            break
+        except asyncio.CancelledError:
+            continue
+
+    raise exc
 
 
 #### begin server ####
@@ -239,7 +236,7 @@ class ProjectsSpec(SubscriptionSpec):
 
     async def fetch_initial(self, conn):
         where, args = self.where()
-        query =f"""
+        query = f"""
             select
                 srv_id,
                 seqno,
@@ -510,12 +507,13 @@ class Reader:
             obj = msg.json()
             typ = obj["type"]
             mux_id = obj["mux_id"]
-            if typ == "subscribe":
+            if typ in ("subscribe", "fetch"):
                 if mux_id in self.subs:
                     raise UserError(f"duplicate mux_id: {mux_id}")
                 sub = Subscription(self.w, mux_id, obj)
                 self.subs[mux_id] = sub
-                self.l.add_subscriber(sub)
+                if typ == "subscribe":
+                    self.l.add_subscriber(sub)
                 await sub.fetch_initial()
             elif typ == "close":
                 sub = self.subs.pop(mux_id, None)
@@ -524,6 +522,8 @@ class Reader:
                 self.l.remove_subscriber(sub)
                 self.w.put({"type": "closed", "mux_id": mux_id})
             elif typ == "upload":
+                if mux_id in self.subs:
+                    raise UserError(f"duplicate mux_id: {mux_id}")
                 await self.upload(obj["objects"])
                 self.w.put({"type": "uploaded", "mux_id": mux_id})
             else:
@@ -568,7 +568,7 @@ class Reader:
                             obj.get("body"),
                             readdatetime(obj["authortime"]),
                             obj["archivetime"],
-                            USER_UUID,
+                            USER,
                             datetime_now(),
                         )
                 if typed["newentry"]:
@@ -591,7 +591,7 @@ class Reader:
                     for obj in typed["newentry"]:
                         await stmt.fetch(
                             obj["project"],
-                            USER_UUID,
+                            USER,
                             obj["version"],
                             obj["report"],
                             obj["entry"],
@@ -620,7 +620,7 @@ class Reader:
                     for obj in typed["newtopic"]:
                         await stmt.fetch(
                             obj["project"],
-                            USER_UUID,
+                            USER,
                             obj["version"],
                             obj["topic"],
                             obj["name"],
@@ -637,23 +637,24 @@ class Reader:
 
 route = web.RouteTableDef()
 
-# aiohttp's built-in websocket
 @route.get("/ws")
 async def ws_handler(request):
     try:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
-        # Listner to listen for notifications from postgres
+        # Listener to listen for notifications from postgres
         l = Listener()
         # Writer to write results to the websocket
         w = Writer(ws)
-        # Reader to read and process messages from the user
+        # Reader to read and process messages from the client
         r = Reader(ws, l, w)
 
         await waitgroup(l.run(), w.run(), r.run())
 
         return ws
+    except ConnectionResetError:
+        log.debug("/ws connection reset")
     except Exception as e:
         log.error(e)
         raise

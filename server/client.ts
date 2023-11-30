@@ -178,6 +178,20 @@ class FWClient {
         return sub;
     }
 
+    fetch(spec){
+        let muxId = this.GetMuxID();
+        let msg = {
+            "type": "fetch",
+            "mux_id": muxId,
+            ...spec,
+        };
+        let sub = new FWSubscription(this, muxId);
+        this.subs[muxId] = sub;
+        this.unsent.push(msg);
+        this.advancer.schedule(null);
+        return new FWFetch(sub);
+    }
+
     upload(objects){
         let muxId = this.GetMuxID();
         let msg = {
@@ -260,6 +274,40 @@ class FWSubscription {
     }
 }
 
+class FWFetch {
+    // FWFetch is just a wrapper around FWSubscription
+    sub: FWSubscription;
+
+    canceled: boolean = false;
+
+    // callback API //
+    onFetch?: {(payload: any[]): void} = null;
+
+    constructor(sub) {
+        this.sub = sub
+        this.sub.onSync = (payload) => {
+            this.healthyCallback(this.onFetch, payload);
+            this.sub.client.subs.delete(this.sub.muxId);
+        };
+    }
+
+    healthyCallback(func, ...args: any[]): void {
+        if(!func) return;
+        setTimeout(() => {
+            if(!this.canceled && !this.sub.client.wantClose) func(...args);
+        });
+    }
+
+    // external API //
+
+    /* cancel cancels the callback but does not affect the messages on the
+       wire, since the server does not read messages from the client until
+       after the sync message is sent. */
+    cancel(): void {
+        this.canceled = true;
+    }
+}
+
 class FWRequest {
     client: FWClient;
     muxId: number;
@@ -318,11 +366,10 @@ class Demo {
         // find a valid project
         if(!this.finding_project){
             this.finding_project = true;
-            this.sub = this.client.subscribe({"projects": {"match": "*"}});
-            this.sub.onPreSyncMsg = (msg) => {
-                this.project = msg.project;
-                console.log(`found project=${this.project}`, msg);
-                this.sub.close();
+            let fetch = this.client.fetch({"projects": {"match": "*"}});
+            fetch.onFetch = (payload) => {
+                this.project = payload[0].project;
+                console.log(`found project=${this.project}`);
                 this.advancer.schedule(null);
             }
         }
@@ -331,13 +378,12 @@ class Demo {
         // find a valid topic
         if(!this.finding_topic){
             this.finding_topic = true;
-            this.sub = this.client.subscribe(
+            let fetch = this.client.fetch(
                 {"topics": {"match": "project", "value": this.project}}
             );
-            this.sub.onPreSyncMsg = (msg) => {
-                this.topic = msg.topic;
+            fetch.onFetch = (payload) => {
+                this.topic = payload[0].topic;
                 console.log(`found topic=${this.topic}`);
-                this.sub.close();
                 this.advancer.schedule(null);
             }
         }
@@ -346,13 +392,12 @@ class Demo {
         // find a valid report
         if(!this.finding_report){
             this.finding_report = true;
-            this.sub = this.client.subscribe(
+            let fetch = this.client.fetch(
                 {"entries": {"match": "project", "value": this.project}}
             );
-            this.sub.onPreSyncMsg = (msg) => {
-                this.report = msg.report;
+            fetch.onFetch = (payload) => {
+                this.report = payload[0].report;
                 console.log(`found report=${this.report}`);
-                this.sub.close();
                 this.advancer.schedule(null);
             }
         }

@@ -120,6 +120,19 @@ Example:
 }
 ```
 
+#### `type:fetch`
+
+A client asks to start streaming stuff, and to automatically stop when the
+sync message is sent.  No `type:close` message is necessary.
+
+```
+{
+    "type": "fetch",
+    "mux_id": 99,
+    # the rest is identical to type:subscribe
+}
+```
+
 #### `type:upload`
 
 A client uploads new objects to the server.

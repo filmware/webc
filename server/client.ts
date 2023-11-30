@@ -234,17 +234,17 @@ class FWSubscription {
             this.healthyCallback(this.onMsg, msg);
             return;
         }
-        if(this.onPreSyncMsg){
-            // before sync, client can request individual messages
-            this.healthyCallback(this.onPreSyncMsg, msg);
-            return;
-        }
         if(msg.type == "sync") {
             // this is the sync; deliver the buffered presync messages
             this.synced = true;
             let payload = this.presync;
             this.presync = null;
             this.healthyCallback(this.onSync, payload);
+            return;
+        }
+        if(this.onPreSyncMsg){
+            // before sync, client can request individual messages
+            this.healthyCallback(this.onPreSyncMsg, msg);
             return;
         }
         // buffer presync message and keep waiting for sync
@@ -291,9 +291,11 @@ class Demo {
     sub?: FWSubscription = null;
 
     // state
+    proj_uuid?: string = null;
     topic_uuid?: string = null;
     report_uuid?: string = null;
 
+    finding_proj: boolean = false;
     finding_topic: boolean = false;
     finding_report: boolean = false;
     upload_started: boolean = false;
@@ -313,11 +315,24 @@ class Demo {
     }
 
     advanceUp(){
+        // find a valid proj_uuid
+        if(!this.finding_proj){
+            this.finding_proj = true;
+            this.sub = this.client.subscribe({"projects": {"match": "*"}});
+            this.sub.onPreSyncMsg = (msg) => {
+                this.proj_uuid = msg.proj_uuid;
+                console.log(`found proj_uuid=${this.proj_uuid}`, msg);
+                this.sub.close();
+                this.advancer.schedule(null);
+            }
+        }
+        if(!this.proj_uuid) return;
+
         // find a valid topic_uuid
         if(!this.finding_topic){
             this.finding_topic = true;
             this.sub = this.client.subscribe(
-                {"proj_id": 1, "topics": {"match": "*"}}
+                {"topics": {"match": "proj_uuid", "value": this.proj_uuid}}
             );
             this.sub.onPreSyncMsg = (msg) => {
                 this.topic_uuid = msg.topic_uuid;
@@ -332,7 +347,7 @@ class Demo {
         if(!this.finding_report){
             this.finding_report = true;
             this.sub = this.client.subscribe(
-                {"proj_id": 1, "entries": {"match": "*"}}
+                {"entries": {"match": "proj_uuid", "value": this.proj_uuid}}
             );
             this.sub.onPreSyncMsg = (msg) => {
                 this.report_uuid = msg.report_uuid;
@@ -350,7 +365,7 @@ class Demo {
             let req = this.client.upload([
                 {
                     "type": "newcomment",
-                    "proj_id": 1,
+                    "proj_uuid": this.proj_uuid,
                     "version_uuid": crypto.randomUUID(),
                     "comment_uuid": crypto.randomUUID(),
                     "topic_uuid": this.topic_uuid,
@@ -361,14 +376,17 @@ class Demo {
                 },
                 {
                     "type": "newtopic",
-                    "proj_id": 1,
+                    "proj_uuid": this.proj_uuid,
+                    "version_uuid": crypto.randomUUID(),
                     "topic_uuid": crypto.randomUUID(),
+                    "name": "really, another sequel??",
+                    "authortime": "2022-01-01T17:05:00Z",
                     "archivetime": null,
                     "links": ["report", this.report_uuid],
                 },
                 {
                     "type": "newentry",
-                    "proj_id": 1,
+                    "proj_uuid": this.proj_uuid,
                     "report_uuid": this.report_uuid,
                     "entry_uuid": crypto.randomUUID(),
                     "version_uuid": crypto.randomUUID(),
@@ -390,7 +408,6 @@ class Demo {
             this.stream_started = true;
             // now subscribe to comments in the topic we found
             this.sub = this.client.subscribe({
-                "proj_id": 1,
                 "comments": {"match": "topic_uuid", "value": this.topic_uuid},
             });
 

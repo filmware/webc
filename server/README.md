@@ -61,26 +61,43 @@ Example:
 {
     "type": "subscribe",
     "mux_id": 99,
-    "proj_id": 7,
+    "projects": {
+        "since": [[0, 14], [1, 99]],
+        # ONE OF
+        "match": "*",
+        "match": "proj_uuid", "value": "a-proj-uuid"
+    },
+    "users": {
+        "since": [[0, 14], [1, 99]],
+        # ONE OF
+        "match": "proj_uuid", "value": "a-proj-uuid"
+        "match": "user_uuid", "value": "a-user-uuid"
+    },
+    "permissions": {
+        "since": [[0, 14], [1, 99]],
+        # ONE OF
+        "match": "proj_uuid", "value": "a-proj-uuid"
+        "match": "user_uuid", "value": "a-user-uuid"
+    },
     "entries": {
         "since": [[0, 14], [1, 99]],
         # ONE OF:
-        "match": "*"
+        "match": "proj_uuid", "value": "the-proj-uuid"
         "match": "report_uuid", "value": "a-report-uuid"
-        "match": "user_id", "value": 314
+        "match": "user_uuid", "value": "a-user-uuid"
     },
     "topics": {
         "since": [[0, 14], [1, 99]],
         # ONE OF:
-        "match": "*"
-        "match": "user_id", "value": 314
+        "match": "proj_uuid", "value": "a-proj-uuid"
+        "match": "user_uuid", "value": "a-user-uuid"
     },
     "comments": {
         "since": [[0, 14], [1, 99]],
         # ONE OF:
-        "match": "*",
+        "match": "proj_uuid", "value": "a-proj-uuid"
         "match": "topic_uuid", "value": "a-topic-uuid"
-        "match": "user_id", "value": 314
+        "match": "user_uuid", "value": "a-user-uuid"
     }
 }
 ```
@@ -88,12 +105,7 @@ Example:
 - `type:subscribe` indicates this is a subscribe message
 - `mux_id` is a multiplexer id, so multiple streams can share a single
    websocket connection.  It will be attached to all responses for this stream.
-- `project` indicates which project should be queried
-- `since` is a list of the highest client-known (`server_id`, `seqno`) values
-  for this subscription
-- `entries` (optional) is a spec for which entries should be streamed.
-- `topics` (optional) is a spec for which topics should be streamed.
-- `comments` (optional) is a spec for which comments should be streamed.
+- remaining fields are optional specs to describe what to stream.
 
 #### `type:close`
 
@@ -127,16 +139,16 @@ Example:
 ```
 
 Note that server-defined fields, like `srv_id`, `seqno`, or
-`submission_time`, are not part of the uploaded objects.  Neither is `user_id`,
-which is derived from the identity of the uploader, nor `mux_id`, which is part
-of the transport layer, not the object itself.
+`submission_time`, are not part of the uploaded objects.  Neither is
+`user_uuid`, which is derived from the identity of the uploader, nor `mux_id`,
+which is part of the transport layer, not the object itself.
 
 Example `type:newcomment` object:
 
 ```
 {
     "type": "newcomment",
-    "proj_id": 7,
+    "proj_uuid": "the-proj-uuid",
     "version_uuid": "client-chosen-uuid",
     "comment_uuid": "the-comment-uuid",
     "topic_uuid": "the-topic-uuid",
@@ -153,7 +165,7 @@ the `type:entry` section, below).
 ```
 {
     "type": "newentry",
-    "proj_id": 7,
+    "proj_uuid": "the-proj-uuid",
     "report_uuid": "the-report-uuid",
     "entry_uuid": "the-entry-uuid",
     "version_uuid": "client-chosen-uuid",
@@ -170,14 +182,18 @@ Example `type:newtopic` object:
 ```
 {
     "type": "newtopic",
-    "proj_id": 7,
-    "topic_uuid": "client-chosen-uuid",
+    "proj_uuid": "the-proj-uuid",
+    "version_uuid": "client-chosen-uuid",
+    "topic_uuid": "the-topic-uuid",
+    "authortime": "2022-01-01T17:05:00Z",
     "archivetime": [[0,99], [1,199]],
     ... other stuff tbd ...
     "links": [
         ["report", "a-report-uuid"],
         ["entry", "an-entry-uuid"],
-        ["version", "a-version-uuid"]
+        ["entry_version", "a-version-uuid"]
+        ["clip", "a-clip-id"]
+        ["take", "a-scene-and-take"]
     ]
 }
 ```
@@ -210,6 +226,75 @@ Example:
 }
 ```
 
+#### `type:project`
+
+A server tells a client about a project.
+
+Example:
+
+```
+{
+    "type": "project",
+    "mux_id": 99,
+    "srv_id": 1,
+    "seqno": 9194,
+    "version_uuid": "the-version-uuid",
+    "proj_uuid": "the-proj-uuid",
+    "name": "Avengers: Overkill",
+    "user_uuid": "the-user-uuid",
+    "submissiontime": "the-submission-time",
+    "authortime": "the-author-time",
+    "archivetime": [...]
+}
+```
+
+#### `type:user`
+
+A server tells a client about a user.
+
+Note that email and password are privileged fields and not exported normally.
+
+Example:
+
+```
+{
+    "type": "user",
+    "mux_id": 99,
+    "srv_id": 1,
+    "seqno": 9194,
+    "version_uuid": "the-version-uuid",
+    "user_uuid": "the-user-uuid",
+    "name": "joe.blow",
+    "submissiontime": "the-submission-time",
+    "authortime": "the-author-time",
+    "archivetime": [...]
+}
+```
+
+#### `type:permission`
+
+A server tells a client about a permission.
+
+Example:
+
+```
+{
+    "type": "permission",
+    "mux_id": 99,
+    "srv_id": 1,
+    "seqno": 9194,
+    "version_uuid": "the-version-uuid",
+    "user_uuid": "the-user-uuid",
+    "proj_uuid": "the-proj-uuid",
+    "kind": "member|admin|loader|daily|editor",
+    "enable": true,
+    "author_uuid": "the-authors-user-uuid",
+    "submissiontime": "the-submission-time",
+    "authortime": "the-author-time",
+    "archivetime": [...]
+}
+```
+
 #### `type:topic`
 
 A server tells a client about a topic.
@@ -222,9 +307,10 @@ Example:
     "mux_id": 99,
     "srv_id": 1,
     "seqno", 1072,
-    "proj_id": 7,
+    "proj_uuid": "the-proj-uuid",
+    "version_uuid": "the-version-uuid",
     "topic_uuid": "the-topic-uuid",
-    "user_id": 314,
+    "user_uuid": "the-user-uuid",
     "archivetime": [[0,99], [1,199]],
     ... other stuff tbd ...
     "links": [
@@ -253,8 +339,8 @@ Example:
     "mux_id": 99,
     "srv_id": 1,
     "seqno", 1055,
-    "proj_id": 7,
-    "user_id": 314,
+    "proj_uuid": "the-proj-uuid",
+    "user_uuid": "the-user-uuid",
     "version_uuid": "the-version-uuid",
     "comment_uuid": "the-comment-uuid",
     "parent_uuid": "the-parent-uuid",
@@ -283,12 +369,12 @@ Example:
     "mux_id": 99,
     "srv_id": 0,
     "seqno", 1092,
-    "proj_id": 7,
+    "proj_uuid": "the-proj-uuid",
     "report_uuid": "the-report-uuid",
     "entry_uuid": "the-entry-uuid",
     "version_uuid": "the-unique-version-uuid",
     "archivetime": [[0,99], [1,199]]
-    "user_id": 314,
+    "user_uuid": "the-user-uuid",
     "clip_id": ...,
     "content": ...,
     "modifies": ...,

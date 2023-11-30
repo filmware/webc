@@ -17,6 +17,10 @@ import asyncpg
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("fake")
 
+USER_UUID = "0fe07a2c-59d1-4f65-a8a8-e0b4269c32ef"
+PROJ_UUID = "aeb2c3f0-a645-44a9-b6f6-9cb7152c0163"
+PROJ_VERSION_UUID = "45d56af6-5403-4736-9b3c-04a08fa68c9a"
+
 _dickens = None
 
 def get_dickens():
@@ -69,15 +73,17 @@ async def fake_report(conn):
         await conn.fetch(
             f"""
             insert into entries (
-                proj_id,
-                user_id,
+                proj_uuid,
+                user_uuid,
                 report_uuid,
                 entry_uuid,
                 version_uuid,
                 clip_id,
                 content
-            ) VALUES (1, 1, $1, $2, $3, $4, $5)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
+            PROJ_UUID,
+            USER_UUID,
             report_uuid,
             entry_uuid,
             version_uuid,
@@ -134,16 +140,18 @@ async def fake_edit(conn):
                 await conn.fetch(
                     """
                     insert into entries (
-                        proj_id,
-                        user_id,
+                        proj_uuid,
+                        user_uuid,
                         report_uuid,
                         entry_uuid,
                         version_uuid,
                         content,
                         reason,
                         modifies
-                    ) VALUES (1, 1, $1, $2, $3, $4, $5, $6)
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     """,
+                    PROJ_UUID,
+                    USER_UUID,
                     report_uuid,
                     entry_uuid,
                     version_uuid,
@@ -174,16 +182,18 @@ async def fake_edit(conn):
                 await conn.fetch(
                     """
                     insert into entries (
-                        proj_id,
-                        user_id,
+                        proj_uuid,
+                        user_uuid,
                         report_uuid,
                         entry_uuid,
                         version_uuid,
                         content,
                         reason,
                         modifies
-                    ) VALUES (1, 1, $1, $2, $3, $4, $5, $6)
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     """,
+                    PROJ_UUID,
+                    USER_UUID,
                     report_uuid,
                     entry_uuid,
                     version_uuid,
@@ -209,16 +219,18 @@ async def fake_edit(conn):
             await conn.fetch(
                 """
                 insert into entries (
-                    proj_id,
-                    user_id,
+                    proj_uuid,
+                    user_uuid,
                     report_uuid,
                     entry_uuid,
                     version_uuid,
                     content,
                     reason,
                     modifies
-                ) VALUES (1, 1, $1, $2, $3, $4, $5, $6)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 """,
+                PROJ_UUID,
+                USER_UUID,
                 report_uuid,
                 entry_uuid,
                 version_uuid,
@@ -229,25 +241,55 @@ async def fake_edit(conn):
 
 
 async def fake_topic(conn):
-    # Create a fake topic.
-    topic_uuid = uuid.uuid4()
-    all_report_uuids = [
-        r["report_uuid"] for r in await conn.fetch(
-            "select report_uuid from entries group by report_uuid"
-        )
-    ]
-    random.shuffle(all_report_uuids)
-    links = [("report", str(r)) for r in all_report_uuids[:ri(0,3)]]
+    mode = ri(1,2)
+    if mode == 1:
+        # Modify an existing topic.
+        all_topics = [
+            r["topic_uuid"] for r in await conn.fetch(
+                "select topic_uuid from topics group by topic_uuid"
+            )
+        ]
+        if not all_topics:
+            mode = 2
+        else:
+            version_uuid = uuid.uuid4()
+            topic_uuid = random.choice(all_topics)
+            name = random_word(5)
+            links = None
+
+    if mode == 2:
+        # Create a new topic.
+        version_uuid = uuid.uuid4()
+        topic_uuid = uuid.uuid4()
+        name = random_word(5)
+        all_report_uuids = [
+            r["report_uuid"] for r in await conn.fetch(
+                "select report_uuid from entries group by report_uuid"
+            )
+        ]
+        random.shuffle(all_report_uuids)
+        links = [("report", str(r)) for r in all_report_uuids[:ri(0,3)]]
+
     await conn.fetch(
         f"""
         insert into topics (
-            proj_id,
-            user_id,
+            proj_uuid,
+            user_uuid,
+            version_uuid,
             topic_uuid,
+            name,
+            submissiontime,
+            authortime,
             links
-        ) VALUES (1, 1, $1, $2)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         """,
+        PROJ_UUID,
+        USER_UUID,
+        version_uuid,
         topic_uuid,
+        name,
+        datetime.datetime.now(),
+        datetime.datetime.now(),
         json.dumps(links),
     )
 
@@ -293,8 +335,8 @@ async def fake_comment(conn):
         await conn.fetch(
             f"""
             insert into comments (
-                proj_id,
-                user_id,
+                proj_uuid,
+                user_uuid,
                 topic_uuid,
                 version_uuid,
                 comment_uuid,
@@ -302,16 +344,40 @@ async def fake_comment(conn):
                 body,
                 submissiontime,
                 authortime
-            ) VALUES (1, 1, $1, $2, $3, $4, $5, $6, $7)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             """,
+            PROJ_UUID,
+            USER_UUID,
             topic_uuid,
             version_uuid,
             comment_uuid,
             parent_uuid,
             body,
             datetime.datetime.now(),
-            datetime.datetime.now()
+            datetime.datetime.now(),
         )
+
+
+async def make_project(conn):
+    await conn.fetch(
+        f"""
+        insert into projects (
+            version_uuid,
+            proj_uuid,
+            name,
+            user_uuid,
+            submissiontime,
+            authortime
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        on conflict (version_uuid) do nothing;
+        """,
+        PROJ_VERSION_UUID,
+        PROJ_UUID,
+        "Avengers: Overkill",
+        USER_UUID,
+        datetime.datetime.now(),
+        datetime.datetime.now(),
+    )
 
 
 async def main(args):
@@ -325,6 +391,8 @@ async def main(args):
         "c": fake_comment,
     }
     try:
+        await make_project(conn)
+
         for arg in args:
             for c in arg:
                 await actions[c](conn)

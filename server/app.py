@@ -13,6 +13,8 @@ from aiohttp import web
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("app")
 
+# pretend we have an auth system
+USER_UUID = "0fe07a2c-59d1-4f65-a8a8-e0b4269c32ef"
 
 def tojson(obj, indent=None):
 
@@ -166,7 +168,10 @@ def with_mux(mux_id, obj):
     return {"mux_id": mux_id, **obj}
 
 
-class EntriesSpec:
+class SubscriptionSpec:
+    fieldname = ""
+    matchables = ()
+
     def __init__(self, since, match, value):
         self.since = since
         self.match = match
@@ -177,17 +182,20 @@ class EntriesSpec:
         if obj is None:
             return None
         since = obj.get("since", [])
-        match = obj.get("match", "*")
-        value = obj.get("value")
+        match = obj["match"]
+        value = obj["value"]
         # validate
         for s in since:
             if len(s) != 2:
-                raise UserError(f"invalid entries.since ({s})")
-        if match not in ["*", "report_uuid", "user_id"]:
-            raise UserError(f"invalid entries.match ({match})")
-        return EntriesSpec(since, match, value)
+                raise UserError(f"invalid {cls.fieldname}.since ({s})")
+        if match not in cls.matchables:
+            raise UserError(f"invalid {cls.fieldname}.match ({match})")
+        return cls(since, match, value)
 
-    async def fetch_initial(self, conn):
+    def pred(self, obj):
+        return obj[self.match] == self.value
+
+    def where(self):
         a = Argno()
         clauses = []
         args = []
@@ -195,23 +203,141 @@ class EntriesSpec:
             assert len(s) == 2, s
             clauses.append(a(f"(not (srv_id = ? and seqno < ?))"))
             args.extend(s)
-        if self.match == "report_uuid":
-            clauses.append(a("report_uuid = ?"))
-            args.append(self.value)
-        elif self.match == "user_id":
-            clauses.append(a("user_id = ?"))
+
+        if self.value is not None:
+            clauses.append(a(f"{self.match} = ?"))
             args.append(self.value)
 
-        where = ("where " + " and ".join(clauses)) if clauses else ""
+        if not clauses:
+            return "", args
 
+        return "where " + " and ".join(clauses), args
+
+
+class ProjectsSpec(SubscriptionSpec):
+    @classmethod
+    def from_json(cls, obj):
+        if obj is None:
+            return None
+        since = obj.get("since", [])
+        match = obj["match"]
+        value = obj.get("value")
+        # validate
+        for s in since:
+            if len(s) != 2:
+                raise UserError(f"invalid projects.since ({s})")
+        if match not in ("*", "project_uuid"):
+            raise UserError(f"invalid projects.match ({match})")
+        if value is None and match != "*":
+            raise UserError(f"invalid projects.match ({match})")
+        return cls(since, match, value)
+
+    def pred(self, obj):
+        if self.match == "*":
+            return True
+        return obj[self.match] == self.value
+
+    async def fetch_initial(self, conn):
+        where, args = self.where()
         query =f"""
+            select
+                srv_id,
+                seqno,
+                version_uuid,
+                proj_uuid,
+                name,
+                user_uuid,
+                submissiontime,
+                authortime,
+                archivetime
+            from projects
+            {where}
+            ORDER BY seqno
+        """
+
+        stmt = await conn.prepare(query)
+
+        records = await stmt.fetch(*args)
+
+        return [mkdict("project", r.items()) for r in records]
+
+
+class UsersSpec(SubscriptionSpec):
+    fieldname = "users"
+    matchables = ("proj_uuid", "user_uuid")
+
+    async def fetch_initial(self, conn):
+        where, args = self.where()
+        query = f"""
+            select
+                srv_id,
+                seqno,
+                version_uuid,
+                user_uuid,
+                name,
+                -- email,
+                -- password,
+                submissiontime,
+                authortime,
+                archivetime
+            from users
+            {where}
+            ORDER BY seqno
+        """
+
+        stmt = await conn.prepare(query)
+
+        records = await stmt.fetch(*args)
+
+        return [mkdict("user", r.items()) for r in records]
+
+
+class PermissionsSpec(SubscriptionSpec):
+    fieldname = "permissions"
+    matchables = ("proj_uuid", "user_uuid")
+
+    async def fetch_initial(self, conn):
+        where, args = self.where()
+        query = f"""
+            select
+                srv_id,
+                seqno,
+                version_uuid,
+                user_uuid,
+                proj_uuid,
+                kind,
+                enable,
+                author_uuid,
+                submissiontime,
+                authortime,
+                archivetime
+            from users
+            {where}
+            ORDER BY seqno
+        """
+
+
+        stmt = await conn.prepare(query)
+
+        records = await stmt.fetch(*args)
+
+        return [mkdict("user", r.items()) for r in records]
+
+
+class EntriesSpec(SubscriptionSpec):
+    fieldname = "entries"
+    matchables = ("proj_uuid", "report_uuid", "user_uuid")
+
+    async def fetch_initial(self, conn):
+        where, args = self.where()
+        query = f"""
             select
                 srv_id,
                 seqno,
                 report_uuid,
                 entry_uuid,
-                proj_id,
-                user_id,
+                proj_uuid,
+                user_uuid,
                 clip_id,
                 content,
                 modifies,
@@ -228,57 +354,20 @@ class EntriesSpec:
 
         return [mkdict("entry", r.items()) for r in records]
 
-    def pred(self, obj):
-        if self.match == "report_uuid":
-            return obj["report_uuid"] == self.value
-        if self.match == "user_id":
-            return obj["user_id"] == self.value
-        # self.match = "*"
-        return True
 
-
-class TopicsSpec:
-    def __init__(self, since, match, value):
-        self.since = since
-        self.match = match
-        self.value = value
-
-    @classmethod
-    def from_json(cls, obj):
-        if obj is None:
-            return None
-        since = obj.get("since", [])
-        match = obj.get("match", "*")
-        value = obj.get("value")
-        # validate
-        for s in since:
-            if len(s) != 2:
-                raise UserError(f"invalid topics.since ({s})")
-        if match not in ["*", "user_id"]:
-            raise UserError(f"invalid topics.match ({match})")
-        return TopicsSpec(since, match, value)
+class TopicsSpec(SubscriptionSpec):
+    fieldname = "topics"
+    matchables = ("proj_uuid", "user_uuid")
 
     async def fetch_initial(self, conn):
-        a = Argno()
-        clauses = []
-        args = []
-        for s in self.since:
-            assert len(s) == 2, s
-            clauses.append(a(f"(not (srv_id = ? and seqno < ?))"))
-            args.extend(s)
-        if self.match == "user_id":
-            clauses.append(a("user_id = ?"))
-            args.append(self.value)
-
-        where = ("where " + " and ".join(clauses)) if clauses else ""
-
-        query =f"""
+        where, args = self.where()
+        query = f"""
             select
                 srv_id,
                 seqno,
                 topic_uuid,
-                proj_id,
-                user_id,
+                proj_uuid,
+                user_uuid,
                 links,
                 archivetime
             from topics
@@ -292,59 +381,21 @@ class TopicsSpec:
 
         return [mkdict("topic", r.items()) for r in records]
 
-    def pred(self, obj):
-        if self.match == "user_id":
-            return obj["user_id"] == self.value
-        # self.match = "*"
-        return True
 
-
-class CommentsSpec:
-    def __init__(self, since, match, value):
-        self.since = since
-        self.match = match
-        self.value = value
-
-    @classmethod
-    def from_json(cls, obj):
-        if obj is None:
-            return None
-        since = obj.get("since", [])
-        match = obj.get("match", "*")
-        value = obj.get("value")
-        # validate
-        for s in since:
-            if len(s) != 2:
-                raise UserError(f"invalid comment.since ({s})")
-        if match not in ["*", "topic_uuid", "user_id"]:
-            raise UserError(f"invalid comment.match ({match})")
-        return CommentsSpec(since, match, value)
+class CommentsSpec(SubscriptionSpec):
+    fieldname = "comments"
+    matchables = ("proj_uuid", "topic_uuid", "user_uuid")
 
     async def fetch_initial(self, conn):
-        a = Argno()
-        clauses = []
-        args = []
-        for s in self.since:
-            assert len(s) == 2, s
-            clauses.append(a(f"(not (srv_id = ? and seqno < ?))"))
-            args.extend(s)
-        if self.match == "topic_uuid":
-            clauses.append(a("topic_uuid = ?"))
-            args.append(self.value)
-        if self.match == "user_id":
-            clauses.append(a("user_id = ?"))
-            args.append(self.value)
-
-        where = ("where " + " and ".join(clauses)) if clauses else ""
-
-        query =f"""
+        where, args = self.where()
+        query = f"""
             select
                 srv_id,
                 seqno,
                 comment_uuid,
                 topic_uuid,
-                proj_id,
-                user_id,
+                proj_uuid,
+                user_uuid,
                 parent_uuid,
                 body,
                 submissiontime,
@@ -361,20 +412,14 @@ class CommentsSpec:
 
         return [mkdict("comment", r.items()) for r in records]
 
-    def pred(self, obj):
-        if self.match == "topic_uuid":
-            return obj["topic_uuid"] == self.value
-        if self.match == "user_id":
-            return obj["user_id"] == self.value
-        # self.match = "*"
-        return True
-
 
 class Subscription:
     def __init__(self, w, mux_id, obj):
         self.w = w
         self.mux_id = mux_id
-        self.proj_id = obj["proj_id"]
+        self.projects = ProjectsSpec.from_json(obj.get("projects"))
+        self.users = UsersSpec.from_json(obj.get("users"))
+        self.permissions = PermissionsSpec.from_json(obj.get("permissions"))
         self.entries = EntriesSpec.from_json(obj.get("entries"))
         self.topics = TopicsSpec.from_json(obj.get("topics"))
         self.comments = CommentsSpec.from_json(obj.get("comments"))
@@ -384,6 +429,9 @@ class Subscription:
         self.early_streaming_results = []
 
         self.specmap = {
+            "projects": self.projects,
+            "users": self.users,
+            "permissions": self.permissions,
             "entry": self.entries,
             "topic": self.topics,
             "comment": self.comments,
@@ -402,8 +450,7 @@ class Subscription:
             self.w.put(obj)
 
     def pred(self, obj):
-        if obj["proj_id"] != self.proj_id:
-            return False
+        # TODO: configure wakeups to be per-project, at least
         spec = self.specmap[obj["type"]]
         return spec and spec.pred(obj)
 
@@ -497,7 +544,7 @@ class Reader:
                 if typed["newcomment"]:
                     stmt = await conn.prepare("""
                         insert into comments (
-                            proj_id,
+                            proj_uuid,
                             version_uuid,
                             comment_uuid,
                             topic_uuid,
@@ -505,7 +552,7 @@ class Reader:
                             body,
                             authortime,
                             archivetime,
-                            user_id,
+                            user_uuid,
                             submissiontime
                         ) values (
                             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
@@ -513,7 +560,7 @@ class Reader:
                     """)
                     for obj in typed["newcomment"]:
                         await stmt.fetch(
-                            obj["proj_id"],
+                            obj["proj_uuid"],
                             obj["version_uuid"],
                             obj["comment_uuid"],
                             obj["topic_uuid"],
@@ -521,14 +568,14 @@ class Reader:
                             obj.get("body"),
                             readdatetime(obj["authortime"]),
                             obj["archivetime"],
-                            1, # user_id
+                            USER_UUID,
                             datetime_now(),
                         )
                 if typed["newentry"]:
                     stmt = await conn.prepare("""
                         insert into entries (
-                            proj_id,
-                            user_id,
+                            proj_uuid,
+                            user_uuid,
                             version_uuid,
                             report_uuid,
                             entry_uuid,
@@ -543,8 +590,8 @@ class Reader:
                     """)
                     for obj in typed["newentry"]:
                         await stmt.fetch(
-                            obj["proj_id"],
-                            1, # user_id
+                            obj["proj_uuid"],
+                            USER_UUID,
                             obj["version_uuid"],
                             obj["report_uuid"],
                             obj["entry_uuid"],
@@ -557,22 +604,30 @@ class Reader:
                 if typed["newtopic"]:
                     stmt = await conn.prepare("""
                         insert into topics (
-                            proj_id,
-                            user_id,
+                            proj_uuid,
+                            user_uuid,
+                            version_uuid,
                             topic_uuid,
+                            name,
                             links,
-                            archivetime
+                            archivetime,
+                            authortime,
+                            submissiontime
                         ) values (
-                            $1, $2, $3, $4, $5
-                        ) on conflict (topic_uuid) do nothing;
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9
+                        ) on conflict (version_uuid) do nothing;
                     """)
                     for obj in typed["newtopic"]:
                         await stmt.fetch(
-                            obj["proj_id"],
-                            1, # user_id
+                            obj["proj_uuid"],
+                            USER_UUID,
+                            obj["version_uuid"],
                             obj["topic_uuid"],
-                            tojson(obj["links"]),
+                            obj["name"],
+                            tojson(obj.get("links")),
                             obj["archivetime"],
+                            readdatetime(obj["authortime"]),
+                            datetime_now(),
                         )
         finally:
             await conn.close()

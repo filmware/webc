@@ -5,13 +5,15 @@ create sequence if not exists projects_seq as int8 start 1;
 create table if not exists projects (
     srv_id int not null default 1,
     seqno int8 not null default nextval('projects_seq'),
-    version uuid primary key,
+    version uuid unique,
     project uuid not null,
     name varchar(64) not null unique,
     "user" uuid not null,
     submissiontime timestamptz not null,
     authortime timestamptz not null,
-    archivetime jsonb
+    archivetime jsonb,
+
+    constraint projects_seq_uniq unique (srv_id, seqno)
 );
 create index if not exists projects_project_idx on projects (project);
 
@@ -20,14 +22,16 @@ create sequence if not exists users_seq as int8 start 1;
 create table if not exists users (
     srv_id int not null default 1,
     seqno int8 not null default nextval('users_seq'),
-    version uuid primary key,
+    version uuid unique,
     "user" uuid not null,
     name varchar(64) not null unique,
     email varchar(128) not null,
     password varchar(128) not null,
     submissiontime timestamptz not null,
     authortime timestamptz not null,
-    archivetime jsonb
+    archivetime jsonb,
+
+    constraint users_seq_uniq unique (srv_id, seqno)
 );
 create index if not exists users_user_idx on users ("user");
 
@@ -45,7 +49,9 @@ create type permission_kind as enum (
 );
 create sequence if not exists perms_seq as int8 start 1;
 create table if not exists permissions (
-    version uuid primary key,
+    srv_id int not null default 1,
+    seqno int8 not null default nextval('perms_seq'),
+    version uuid unique,
     "user" uuid not null,
     project uuid not null,
     kind permission_kind not null,
@@ -54,7 +60,9 @@ create table if not exists permissions (
     author uuid not null,
     submissiontime timestamptz not null,
     authortime timestamptz not null,
-    archivetime jsonb
+    archivetime jsonb,
+
+    constraint prems_seq_uniq unique (srv_id, seqno)
 );
 create index if not exists permissions_user_idx on permissions ("user");
 create index if not exists permissions_project_idx on permissions (project);
@@ -72,7 +80,7 @@ create table if not exists entries (
     -- the entry in the report; not unique because edits also appear here
     entry uuid not null,
     -- the version of this entry; unique, but not linear
-    version uuid primary key,
+    version uuid unique,
     project uuid not null,
     "user" uuid not null,
 
@@ -112,7 +120,7 @@ create sequence if not exists topics_seq as int8 start 1;
 create table if not exists topics (
     srv_id int not null default 1,
     seqno int8 not null default nextval('topics_seq'),
-    version uuid primary key,
+    version uuid unique,
     topic uuid not null,
     project uuid not null,
     "user" uuid not null,
@@ -145,7 +153,7 @@ create sequence if not exists comments_seq as int8 start 1;
 create table if not exists comments (
     srv_id int not null default 1,
     seqno int8 not null default nextval('comments_seq'),
-    version uuid primary key,
+    version uuid unique,
     comment uuid not null,
     topic uuid not null,
     project uuid not null,

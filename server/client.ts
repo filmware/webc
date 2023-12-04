@@ -3,20 +3,18 @@ WebSocket = (typeof WebSocket === "undefined") ? require('ws') : WebSocket;
 type advanceUpFn = () => void;
 type advanceDnFn = (error: any) => void;
 
-interface Advanceable {
-    advanceUp: advanceUpFn;
-    advanceDn: advanceDnFn;
-};
-
 class Advancer {
-    error: any = null;
+    protected error: any = null;
+    protected scheduled : boolean = false;
+    protected advanceUp: advanceUpFn;
+    protected advanceDn: advanceDnFn;
+
     doneUp: boolean = false;
     doneDn: boolean = false;
-    scheduled : boolean = false;
-    obj: Advanceable;
 
-    constructor(obj: Advanceable) {
-        this.obj = obj;
+    constructor(thisArg: any, advanceUp: advanceUpFn, advanceDn: advanceDnFn){
+        this.advanceUp = advanceUp.bind(thisArg);
+        this.advanceDn = advanceDn.bind(thisArg);
     };
 
     schedule(error: any) {
@@ -29,7 +27,7 @@ class Advancer {
         }
     }
 
-    advanceState(): void {
+    protected advanceState(): void {
         this.scheduled = false;
         if (this.doneDn) {
             // late wakeups are ignored
@@ -37,14 +35,14 @@ class Advancer {
         }
         if (!this.doneUp && !this.error) {
             try {
-                this.obj.advanceUp();
+                this.advanceUp();
             } catch(error) {
                 this.error = error;
             }
         }
 
         if (this.doneUp || this.error) {
-            this.obj.advanceDn(this.error);
+            this.advanceDn(this.error);
         }
     }
 };
@@ -68,7 +66,7 @@ class FWClient {
     onClose?: {(error: any): void} = null;
 
     constructor(url: string) {
-        this.advancer = new Advancer(this);
+        this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
 
         this.socket = new WebSocket(url);
 
@@ -99,12 +97,12 @@ class FWClient {
         };
     }
 
-    GetMuxID(): number {
+    private getMuxID(): number {
         this.muxId += 1;
         return this.muxId;
     }
 
-    advanceUp(): void {
+    private advanceUp(): void {
         // wait for a connection
         if (!this.socketConnected) {
             return;
@@ -137,7 +135,7 @@ class FWClient {
         }
     }
 
-    advanceDn(error: any): void {
+    private advanceDn(error: any): void {
         // make sure our socket is closed
         if (!this.socketCloseDone) {
             if (!this.socketCloseStarted) {
@@ -165,7 +163,7 @@ class FWClient {
              message except mux_id and type */
     subscribe(spec){
         // can these be const?  I don't know how that works.
-        let muxId = this.GetMuxID();
+        let muxId = this.getMuxID();
         let msg = {
             "type": "subscribe",
             "mux_id": muxId,
@@ -179,7 +177,7 @@ class FWClient {
     }
 
     fetch(spec){
-        let muxId = this.GetMuxID();
+        let muxId = this.getMuxID();
         let msg = {
             "type": "fetch",
             "mux_id": muxId,
@@ -193,7 +191,7 @@ class FWClient {
     }
 
     upload(objects){
-        let muxId = this.GetMuxID();
+        let muxId = this.getMuxID();
         let msg = {
             "type": "upload",
             "mux_id": muxId,
@@ -359,7 +357,7 @@ class Demo {
             this.advancer.schedule(error);
         }
 
-        this.advancer = new Advancer(this);
+        this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
     }
 
     advanceUp(){

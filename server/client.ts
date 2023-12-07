@@ -47,15 +47,46 @@ class Advancer {
     }
 };
 
-class FWClient {
+/* FWClient is the logical unit of synchronization.  It is an interface because
+   it can be implemented either directly over a websocket or through a
+   replicator built around an IndexedDB, or through a port to SharedWorker. */
+interface FWClient {
+    subscribe(spec): FWSubscription;
+    fetch(spec): FWFetch;
+    upload(objects): void;
+}
+
+interface FWSubscription {
+    /* onPreSyncMsg returns messages prior to the synchronization message.
+       If unset, onSync will return all messages in a single callback.  It is
+       assumed onPreSyncMsg will be unset unless the consumer is collecting a
+       very large amount of data and wants to process it as it arrives, rather
+       than buffer everything in memory. */
+    onPreSyncMsg?: {(msg: any): void};
+    /* onSync returns the whole initial payload, unless onPreSyncMsg was
+       set, in which case it returns an empty list of messages. */
+    onSync?: {(payload: any[]): void};
+    // onMsg returns individual messages which arrive after the sync message.
+    onMsg?: {(msg: any): void};
+
+    close(): void;
+}
+
+interface FWFetch {
+    onFetch?: {(payload: any[]): void};
+
+    cancel(): void;
+}
+
+class FWClientWS {
     advancer: Advancer;
     socket: WebSocket;
 
     unsent: any[] = [];
     recvd: any[] = [];
     muxId: number = 0;
-    subs: Map<number, FWSubscription> = new Map<number, FWSubscription>;
-    reqs: Map<number, FWRequest> = new Map<number, FWRequest>;
+    subs: Map<number, FWSubscriptionWS> = new Map<number, FWSubscriptionWS>;
+    reqs: Map<number, FWRequestWS> = new Map<number, FWRequestWS>;
 
     socketConnected: boolean = false;
     socketCloseStarted: boolean = false;
@@ -169,7 +200,7 @@ class FWClient {
             "mux_id": muxId,
             ...spec,
         };
-        let sub = new FWSubscription(this, muxId);
+        let sub = new FWSubscriptionWS(this, muxId);
         this.subs[muxId] = sub;
         this.unsent.push(msg);
         this.advancer.schedule(null);
@@ -183,21 +214,21 @@ class FWClient {
             "mux_id": muxId,
             ...spec,
         };
-        let sub = new FWSubscription(this, muxId);
+        let sub = new FWSubscriptionWS(this, muxId);
         this.subs[muxId] = sub;
         this.unsent.push(msg);
         this.advancer.schedule(null);
-        return new FWFetch(sub);
+        return new FWFetchWS(sub);
     }
 
-    upload(objects){
+    upload(objects): FWRequestWS {
         let muxId = this.getMuxID();
         let msg = {
             "type": "upload",
             "mux_id": muxId,
             "objects": objects
         };
-        let req = new FWRequest(this, muxId);
+        let req = new FWRequestWS(this, muxId);
         this.reqs[muxId] = req;
         this.unsent.push(msg);
         this.advancer.schedule(null);
@@ -205,8 +236,8 @@ class FWClient {
     }
 }
 
-class FWSubscription {
-    client: FWClient;
+class FWSubscriptionWS {
+    client: FWClientWS;
     muxId: number;
 
     presync: any[] = [];
@@ -232,10 +263,12 @@ class FWSubscription {
         this.muxId = muxId;
     }
 
-    healthyCallback(func, ...args: any[]): void {
-        if(!func) return;
+    healthyCallback(name, ...args: any[]): void {
         setTimeout(() => {
-            if(!this.closed && !this.client.wantClose) func(...args);
+            let func = this[name];
+            if(func && !this.closed && !this.client.wantClose){
+                func(...args);
+            }
         });
     }
 
@@ -243,7 +276,7 @@ class FWSubscription {
     put(msg): void {
         if(this.synced){
             // after sync, always call onMsg
-            this.healthyCallback(this.onMsg, msg);
+            this.healthyCallback("onMsg", msg);
             return;
         }
         if(msg.type == "sync") {
@@ -251,12 +284,12 @@ class FWSubscription {
             this.synced = true;
             let payload = this.presync;
             this.presync = null;
-            this.healthyCallback(this.onSync, payload);
+            this.healthyCallback("onSync", payload);
             return;
         }
         if(this.onPreSyncMsg){
             // before sync, client can request individual messages
-            this.healthyCallback(this.onPreSyncMsg, msg);
+            this.healthyCallback("onPreSyncMsg", msg);
             return;
         }
         // buffer presync message and keep waiting for sync
@@ -272,9 +305,9 @@ class FWSubscription {
     }
 }
 
-class FWFetch {
+class FWFetchWS {
     // FWFetch is just a wrapper around FWSubscription
-    sub: FWSubscription;
+    sub: FWSubscriptionWS;
 
     canceled: boolean = false;
 
@@ -284,15 +317,17 @@ class FWFetch {
     constructor(sub) {
         this.sub = sub
         this.sub.onSync = (payload) => {
-            this.healthyCallback(this.onFetch, payload);
+            this.healthyCallback("onFetch", payload);
             this.sub.client.subs.delete(this.sub.muxId);
         };
     }
 
-    healthyCallback(func, ...args: any[]): void {
-        if(!func) return;
+    healthyCallback(name, ...args: any[]): void {
         setTimeout(() => {
-            if(!this.canceled && !this.sub.client.wantClose) func(...args);
+            let func = this[name];
+            if(func && !this.canceled && !this.sub.client.wantClose){
+                func(...args);
+            }
         });
     }
 
@@ -306,15 +341,15 @@ class FWFetch {
     }
 }
 
-class FWRequest {
-    client: FWClient;
+class FWRequestWS {
+    client: FWClientWS;
     muxId: number;
     finished: boolean = false;
 
     // callback API //
     onFinish?: {(): void} = null;
 
-    constructor(client: FWClient, muxId: number) {
+    constructor(client: FWClientWS, muxId: number) {
         this.client = client;
         this.muxId = muxId;
     }
@@ -331,7 +366,7 @@ class FWRequest {
 }
 
 class Demo {
-    client: FWClient;
+    client: FWClientWS;
     advancer: Advancer;
 
     sub?: FWSubscription = null;
@@ -349,7 +384,7 @@ class Demo {
     stream_started: boolean = false;
 
     constructor(){
-        this.client = new FWClient("ws://localhost:8080/ws");
+        this.client = new FWClientWS("ws://localhost:8080/ws");
         this.client.onClose = (error) => {
             if(error === null){
                 error = "client closed unexpectedly";

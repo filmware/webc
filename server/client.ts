@@ -1,4 +1,5 @@
-WebSocket = (typeof WebSocket === "undefined") ? require('ws') : WebSocket;
+import { WebSocket } from "ws";
+import { observable, Observable, WritableObservable } from "micro-observables";
 
 type advanceUpFn = () => void;
 type advanceDnFn = (error: any) => void;
@@ -365,6 +366,204 @@ class FWRequestWS {
     // no external API //
 }
 
+class FWComment {
+    srvId: number; // only for tie-breaker sorting
+    seqno: number; // only for tie-breaker sorting
+    uuid: string;
+    topic: string;
+    project: string;
+    user: string;
+    body: string;
+    parent?: string; // parent uuid
+
+    // whose parent are we
+    children: string[]; // list of child uuids
+    submissiontime: Date;
+    authortime: Date;
+    edittime?: Date;
+}
+
+function isBefore(a: any, akind: string, b: any, bkind: string): boolean {
+    if(a[akind] < b[bkind]){
+        return true;
+    }else if(a[akind] > b[bkind]){
+        return false;
+    }
+    // tiebreaker
+    if(a.srvId == b.srvId) return a.srvId < b.srvId;
+    return a.srvId < b.srvId;
+}
+
+function isBeforeSort(a: any, akind: string, b: any, bkind: string): number {
+    return isBefore(a, akind, b, bkind) ? -1 : 1;
+}
+
+class FWComments {
+    observable: Observable<Record<string, FWComment>>;
+    onSync?: {(): void};
+
+    private writable: WritableObservable<Record<string, FWComment>>;
+    private sub: FWSubscription;
+    private advancer: Advancer;
+    private recvd?: any = null;
+    private comments: Record<string, FWComment> = {};
+    private unresolved: Record<string, any[]> = {};
+    private allParents: Record<string, boolean> = {};
+
+    private onSyncSent: boolean = false;
+
+    constructor(client: FWClient, spec: any) {
+        this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
+        this.sub = client.subscribe({"comments": spec});
+        this.sub.onSync = (payload) => {
+            this.recvd = payload;
+            this.advancer.schedule(null);
+        };
+        this.sub.onMsg = (msg) => {
+            this.recvd.push(msg);
+            this.advancer.schedule(null);
+        }
+        this.writable = observable({});
+        this.observable = this.writable.readOnly();
+    }
+
+    private resolve(msg: any): any[] {
+        const uuid = msg["comment"];
+        this.allParents[uuid] = true;
+        let out = [msg];
+        let newResolved = this.unresolved[uuid];
+        if(newResolved){
+            delete this.unresolved[uuid];
+            newResolved.forEach((msg) => {
+                out.push(...this.resolve(msg));
+            });
+        }
+        return out;
+    }
+
+    private processRecvd(): void {
+        // do we have any updates to process?
+        if(!this.recvd.length) return;
+
+        // Deal with unresolved comments.  Currently, unresolved means:
+        //  - parent is defined but not present
+
+        let resolved = []
+
+        // sort received into resolved and unresolved, promoting as needed
+        this.recvd.forEach((msg) => {
+            const uuid = msg["comment"];
+            const parent = msg["parent"];
+            if(parent === null){
+                // top-level comments are always resolved
+                resolved.push(...this.resolve(msg));
+            }else if(parent in this.allParents){
+                // parent already exists
+                resolved.push(...this.resolve(msg));
+            }else if(parent in this.unresolved){
+                this.unresolved[parent].push(msg);
+            }else{
+                this.unresolved[parent] = [msg];
+            }
+        });
+        this.recvd = [];
+
+        // now apply comment msg events to FWComment objects
+        let newChildren = [];
+        resolved.forEach((msg) => {
+            const uuid = msg["comment"];
+
+            let c = {
+                srvId: msg["srvId"],
+                seqno: msg["seqno"],
+                uuid: uuid,
+                topic: msg["topic"],
+                project: msg["project"],
+                user: msg["user"], // todo: link to users instead
+                parent: msg["parent"],
+                body: msg["body"],
+                submissiontime: msg["submissiontime"],
+                authortime: msg["authortime"],
+                edittime: null,
+                children: [],
+            };
+
+            // read diffs, apply to our comments map
+            // "x" = e"x"isting commet
+            let x = this.comments[uuid];
+            if(!x){
+                // new comment
+                this.comments[uuid] = c;
+                if(c.parent){
+                    newChildren.push([uuid, c.parent]);
+                }
+            }else if(
+                // c is an update to x...
+                isBefore(x, "authortime", c, "authortime")
+                // but c is not the latest update to x...
+                && isBefore(c, "authortime", x, "edittime")
+            ){
+                // ignore already-obsolete updates
+            }else{
+                // c updates x, or x updates c
+                let [older, newer] =
+                    isBefore(x, "authortime", c, "authortime")
+                    ?  [x, c] : [c, x];
+                this.comments[uuid] = {
+                    // preserve immutable fields and child links
+                    /* (note we are trusting the update to not make illegal
+                        modifications) */
+                    ...x,
+                    // update mutable content
+                    srvId: older.srvId,
+                    seqno: older.seqno,
+                    submissiontime: older.submissiontime,
+                    authortime: older.authortime,
+                    body: newer.body,
+                    edittime: newer.authortime,
+                }
+            }
+        });
+
+        // now that all FWComment objects are created, update children links
+        newChildren.forEach(([child,  parent]) => {
+            this.comments[parent].children.push(child);
+        });
+
+        // finally, update the observable
+        this.writable.set({...this.comments})
+    }
+
+    private advanceUp(): void {
+        // wait for initial sync
+        if(!this.recvd) return;
+
+        this.processRecvd();
+
+        // send onSync after we have processed our own sync msg
+        if(!this.onSyncSent){
+            this.onSyncSent = true;
+            setTimeout(() => {
+                if(!this.advancer.doneUp && this.onSync){
+                    this.onSync();
+                }
+            });
+        }
+    }
+
+    private advanceDn(error): void {
+        // this should actually never run
+        console.log("unexpected FWComments.advanceDn() error:", error);
+    }
+
+    close(): void {
+        this.advancer.doneUp = true;
+        this.sub.close();
+        // there's no cleanup to be done
+        this.advancer.doneDn = true;
+    }
+}
+
 class Demo {
     client: FWClientWS;
     advancer: Advancer;
@@ -484,22 +683,12 @@ class Demo {
 
         if(!this.stream_started){
             this.stream_started = true;
-            // now subscribe to comments in the topic we found
-            this.sub = this.client.subscribe({
-                "comments": {"match": "topic", "value": this.topic},
-            });
-
-            this.sub.onSync = (payload) => {
-                console.log("--- sync!");
-                for(let i = 0; i < payload.length; i++){
-                    console.log(`payload[${i}]:`, payload[i]);
-                }
-                console.log("---");
-            };
-
-            this.sub.onMsg = (msg) => {
-                console.log(msg);
-            };
+            // now stream comments from the topic we found
+            let comments = new FWComments(
+                this.client, {"match": "topic", "value": this.topic}
+            );
+            // for now, we'll just print stuff to the console
+            comments.observable.subscribe(printComments);
         }
     }
 
@@ -507,6 +696,34 @@ class Demo {
         console.log("demo exited with error:", error);
         this.advancer.doneDn = true;
     }
+}
+
+function printList(
+    all: Record<string, FWComment>, comments: FWComment[], indent: string = ""
+): void {
+    comments.sort((a, b) => {
+        return isBeforeSort(a, "submissiontime", b, "submissiontime");
+    });
+    comments.forEach((c, idx) => {
+        // very first print resets the screen
+        let pre = (indent == "" && idx == 0) ? "\x1b[2J\x1b[1;1H" : "";
+        // edits are flagged as "*"
+        let post = c.edittime ? " *" : "";
+        console.log(`${pre}${indent}${c.uuid}${post}`);
+        let children = c.children.map((uuid) => all[uuid]);
+        printList(all, children, indent + "  ");
+    });
+}
+
+function printComments(comments: Record<string, FWComment>): void {
+    let top = [];
+    for(let uuid in comments){
+        let c = comments[uuid];
+        if(c.parent == null){
+            top.push(c);
+        }
+    }
+    printList(comments, top);
 }
 
 let demo = new Demo();

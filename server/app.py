@@ -261,6 +261,7 @@ class ProjectsSpec(SubscriptionSpec):
 
 class UsersSpec(SubscriptionSpec):
     fieldname = "users"
+    # TODO: users doesn't even have a project field!
     matchables = ("project", "user")
 
     async def fetch_initial(self, conn):

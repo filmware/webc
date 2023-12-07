@@ -67,6 +67,7 @@ Example:
         "match": "*",
         "match": "project", "value": "a-proj-uuid"
     },
+    # TODO: figure out how users will be streamed; this is not right.
     "users": {
         "since": [[0, 14], [1, 99]],
         # ONE OF

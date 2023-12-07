@@ -1,18 +1,7 @@
-import { useMemo } from 'react'
-
-import css from './App.module.scss'
-
-function AppContent() {
-  const className = useMemo(() => {
-    const classes = [css.base]
-    return classes.join(' ')
-  }, [])
-
-  return <div className={className}>App</div>
-}
+import AppRouter from '@/routes/AppRouter'
 
 function App() {
-  return <AppContent />
+  return <AppRouter />
 }
 
 export default App

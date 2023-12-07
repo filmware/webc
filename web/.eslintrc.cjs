@@ -23,12 +23,6 @@ module.exports = {
         'no-fallthrough': 'off',
       },
     },
-    {
-      files: ['**/*.tsx'],
-      rules: {
-        '@typescript-eslint/explicit-module-boundary-types': 'off',
-      }
-    }
   ],
   parser: '@typescript-eslint/parser',
   parserOptions: {
@@ -44,10 +38,6 @@ module.exports = {
     ],
     // Can disagree with @typescript-eslint/member-ordering.
     '@typescript-eslint/adjacent-overload-signatures': 'off',
-    '@typescript-eslint/explicit-module-boundary-types': [
-      'error',
-      { allowArgumentsExplicitlyTypedAsAny: true },
-    ],
     '@typescript-eslint/no-explicit-any': 'error',
     '@typescript-eslint/no-unused-vars': [
       'error',

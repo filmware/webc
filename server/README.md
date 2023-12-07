@@ -65,39 +65,39 @@ Example:
         "since": [[0, 14], [1, 99]],
         # ONE OF
         "match": "*",
-        "match": "proj_uuid", "value": "a-proj-uuid"
+        "match": "project", "value": "a-proj-uuid"
     },
     "users": {
         "since": [[0, 14], [1, 99]],
         # ONE OF
-        "match": "proj_uuid", "value": "a-proj-uuid"
-        "match": "user_uuid", "value": "a-user-uuid"
+        "match": "project", "value": "a-proj-uuid"
+        "match": "user", "value": "a-user-uuid"
     },
     "permissions": {
         "since": [[0, 14], [1, 99]],
         # ONE OF
-        "match": "proj_uuid", "value": "a-proj-uuid"
-        "match": "user_uuid", "value": "a-user-uuid"
+        "match": "project", "value": "a-proj-uuid"
+        "match": "user", "value": "a-user-uuid"
     },
     "entries": {
         "since": [[0, 14], [1, 99]],
         # ONE OF:
-        "match": "proj_uuid", "value": "the-proj-uuid"
-        "match": "report_uuid", "value": "a-report-uuid"
-        "match": "user_uuid", "value": "a-user-uuid"
+        "match": "project", "value": "the-proj-uuid"
+        "match": "report", "value": "a-report-uuid"
+        "match": "user", "value": "a-user-uuid"
     },
     "topics": {
         "since": [[0, 14], [1, 99]],
         # ONE OF:
-        "match": "proj_uuid", "value": "a-proj-uuid"
-        "match": "user_uuid", "value": "a-user-uuid"
+        "match": "project", "value": "a-proj-uuid"
+        "match": "user", "value": "a-user-uuid"
     },
     "comments": {
         "since": [[0, 14], [1, 99]],
         # ONE OF:
-        "match": "proj_uuid", "value": "a-proj-uuid"
-        "match": "topic_uuid", "value": "a-topic-uuid"
-        "match": "user_uuid", "value": "a-user-uuid"
+        "match": "project", "value": "a-proj-uuid"
+        "match": "topic", "value": "a-topic-uuid"
+        "match": "user", "value": "a-user-uuid"
     }
 }
 ```
@@ -161,11 +161,11 @@ Example `type:newcomment` object:
 ```
 {
     "type": "newcomment",
-    "proj_uuid": "the-proj-uuid",
-    "version_uuid": "client-chosen-uuid",
-    "comment_uuid": "the-comment-uuid",
-    "topic_uuid": "the-topic-uuid",
-    "parent_uuid": "the-parent-uuid",
+    "project": "the-proj-uuid",
+    "version": "client-chosen-uuid",
+    "comment": "the-comment-uuid",
+    "topic": "the-topic-uuid",
+    "parent": "the-parent-uuid",
     "body": "the text of the comment",
     "authortime": "2022-01-01T17:05:00Z",
     "archivetime": [[0,99], [1,199]]
@@ -178,10 +178,10 @@ the `type:entry` section, below).
 ```
 {
     "type": "newentry",
-    "proj_uuid": "the-proj-uuid",
-    "report_uuid": "the-report-uuid",
-    "entry_uuid": "the-entry-uuid",
-    "version_uuid": "client-chosen-uuid",
+    "project": "the-proj-uuid",
+    "report": "the-report-uuid",
+    "entry": "the-entry-uuid",
+    "version": "client-chosen-uuid",
     "archivetime": [[0,99], [1,199]],
     "clip_id": ...,
     "content": ...,
@@ -195,9 +195,9 @@ Example `type:newtopic` object:
 ```
 {
     "type": "newtopic",
-    "proj_uuid": "the-proj-uuid",
-    "version_uuid": "client-chosen-uuid",
-    "topic_uuid": "the-topic-uuid",
+    "project": "the-proj-uuid",
+    "version": "client-chosen-uuid",
+    "topic": "the-topic-uuid",
     "authortime": "2022-01-01T17:05:00Z",
     "archivetime": [[0,99], [1,199]],
     ... other stuff tbd ...
@@ -251,10 +251,10 @@ Example:
     "mux_id": 99,
     "srv_id": 1,
     "seqno": 9194,
-    "version_uuid": "the-version-uuid",
-    "proj_uuid": "the-proj-uuid",
+    "version": "the-version-uuid",
+    "project": "the-proj-uuid",
     "name": "Avengers: Overkill",
-    "user_uuid": "the-user-uuid",
+    "user": "the-user-uuid",
     "submissiontime": "the-submission-time",
     "authortime": "the-author-time",
     "archivetime": [...]
@@ -275,8 +275,8 @@ Example:
     "mux_id": 99,
     "srv_id": 1,
     "seqno": 9194,
-    "version_uuid": "the-version-uuid",
-    "user_uuid": "the-user-uuid",
+    "version": "the-version-uuid",
+    "user": "the-user-uuid",
     "name": "joe.blow",
     "submissiontime": "the-submission-time",
     "authortime": "the-author-time",
@@ -296,12 +296,12 @@ Example:
     "mux_id": 99,
     "srv_id": 1,
     "seqno": 9194,
-    "version_uuid": "the-version-uuid",
-    "user_uuid": "the-user-uuid",
-    "proj_uuid": "the-proj-uuid",
+    "version": "the-version-uuid",
+    "user": "the-user-uuid",
+    "project": "the-proj-uuid",
     "kind": "member|admin|loader|daily|editor",
     "enable": true,
-    "author_uuid": "the-authors-user-uuid",
+    "author": "the-authors-user-uuid",
     "submissiontime": "the-submission-time",
     "authortime": "the-author-time",
     "archivetime": [...]
@@ -320,10 +320,10 @@ Example:
     "mux_id": 99,
     "srv_id": 1,
     "seqno", 1072,
-    "proj_uuid": "the-proj-uuid",
-    "version_uuid": "the-version-uuid",
-    "topic_uuid": "the-topic-uuid",
-    "user_uuid": "the-user-uuid",
+    "project": "the-proj-uuid",
+    "version": "the-version-uuid",
+    "topic": "the-topic-uuid",
+    "user": "the-user-uuid",
     "archivetime": [[0,99], [1,199]],
     ... other stuff tbd ...
     "links": [
@@ -352,13 +352,13 @@ Example:
     "mux_id": 99,
     "srv_id": 1,
     "seqno", 1055,
-    "proj_uuid": "the-proj-uuid",
-    "user_uuid": "the-user-uuid",
-    "version_uuid": "the-version-uuid",
-    "comment_uuid": "the-comment-uuid",
-    "parent_uuid": "the-parent-uuid",
+    "project": "the-proj-uuid",
+    "user": "the-user-uuid",
+    "version": "the-version-uuid",
+    "comment": "the-comment-uuid",
+    "parent": "the-parent-uuid",
     "body": "the text of the comment",
-    "topic_uuid": "the-topic-uuid",
+    "topic": "the-topic-uuid",
     "submissiontime": "2022-01-01T21:19:00Z",
     "authortime": "2022-01-01T17:05:00Z"
     "archivetime": [[0,99], [1,199]]
@@ -382,12 +382,12 @@ Example:
     "mux_id": 99,
     "srv_id": 0,
     "seqno", 1092,
-    "proj_uuid": "the-proj-uuid",
-    "report_uuid": "the-report-uuid",
-    "entry_uuid": "the-entry-uuid",
-    "version_uuid": "the-unique-version-uuid",
+    "project": "the-proj-uuid",
+    "report": "the-report-uuid",
+    "entry": "the-entry-uuid",
+    "version": "the-unique-version-uuid",
     "archivetime": [[0,99], [1,199]]
-    "user_uuid": "the-user-uuid",
+    "user": "the-user-uuid",
     "clip_id": ...,
     "content": ...,
     "modifies": ...,

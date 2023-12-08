@@ -1,5 +1,7 @@
 \set ON_ERROR_STOP
 
+alter database filmware set timezone to 'utc';
+
 -- projects are one per production
 create sequence if not exists projects_seq as int8 start 1;
 create table if not exists projects (
@@ -175,31 +177,52 @@ create index if not exists comments_topic on comments (topic);
 create index if not exists comments_comment on comments (comment);
 
 -- add NOTIFY triggers
+-- stream_send( kind [, timefields...] )
 create or replace function stream_send() returns trigger as $$
 DECLARE
     output jsonb = NULL;
     extra jsonb = NULL;
 BEGIN
     output = to_jsonb(NEW) || jsonb_object_agg('type', TG_ARGV[0]);
+    -- convert timefields to rfc3339 timestamps
+    for i in 1..(TG_NARGS-1) loop
+        output = output || jsonb_object_agg(
+            TG_ARGV[i],
+            to_char(
+                (output->>TG_ARGV[i])::timestamptz,
+                'YYYY-MM-DD"T"HH24:MI:SS:USZ'
+            )
+        );
+    end loop;
     PERFORM pg_notify('stream', output::text);
     return null;
 END;
 $$ language plpgsql;
 
 create or replace trigger projects_trigger after insert on projects
-for each row execute procedure stream_send('project');
+for each row execute procedure stream_send(
+    'project', 'authortime', 'submissiontime'
+);
 
 create or replace trigger users_trigger after insert on users
-for each row execute procedure stream_send("user");
+for each row execute procedure stream_send(
+    'user', 'authortime', 'submissiontime'
+);
 
 create or replace trigger permissions_trigger after insert on permissions
-for each row execute procedure stream_send('permission');
+for each row execute procedure stream_send(
+    'permission', 'authortime', 'submissiontime'
+);
 
 create or replace trigger comments_trigger after insert on comments
-for each row execute procedure stream_send('comment');
+for each row execute procedure stream_send(
+    'comment', 'authortime', 'submissiontime'
+);
 
 create or replace trigger entries_trigger after insert on entries
 for each row execute procedure stream_send('entry');
 
 create or replace trigger topics_trigger after insert on topics
-for each row execute procedure stream_send('topic');
+for each row execute procedure stream_send(
+    'topic', 'authortime', 'submissiontime'
+);

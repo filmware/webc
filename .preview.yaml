@@ -1,0 +1,44 @@
+# the devcluster config used by the preview system
+#
+# Required inputs:
+#   - $BUILD: a prepared mkninja build directory
+#   - $DB: a temp directory for the database
+#   - $DEVCLUSTER: a temp directory for devcluster to inherit
+#   - $HTTPSOCK: a path for the http server to run at
+#   - $HTTPURL: the url (with prefix) we will be viewed at
+#   - $SESSION: our unique id
+#   - $TREE: our personal git worktree to use
+
+temp_dir: $DEVCLUSTER
+
+stages:
+- custom:
+    name: db
+    pre:
+      - sh: ninja -C $BUILD -v deps
+    cmd:
+      - python3
+      - -u
+      - $TREE/server/pg.py
+      - $DB
+      - --fake
+      - ''
+    kill_signal: TERM
+    post:
+    - logcheck:
+        regex: filmware db is ready
+
+- custom:
+    name: app
+    pre:
+      - sh: ninja -C $BUILD -v build
+    cmd:
+      - python3
+      - -u
+      - $TREE/server/app.py
+      - --dist
+      - $TREE/web/dist
+      - --unix
+      - $HTTPSOCK
+      - --pgpath
+      - $DB

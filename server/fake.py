@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import asyncio
 import collections
 import datetime
@@ -712,10 +713,8 @@ async def make_project(conn):
     await fake_user(conn, OWNER, "Praj", "Ectowner", "admin")
 
 
-async def main(args):
-    conn = await asyncpg.connect(
-        host="/tmp/filmware", database="filmware"
-    )
+async def amain(args, host="/tmp/filmware"):
+    conn = await asyncpg.connect(host=host, database="filmware")
     actions = {
         "r": fake_report,
         "e": fake_edit,
@@ -733,24 +732,25 @@ async def main(args):
         await conn.close()
 
 
+def main(args, host="/tmp/filmware"):
+    asyncio.run(amain(args, host=host))
+
+
 if __name__ == "__main__":
-    if len(sys.argv) == 1:
-        print(
-            textwrap.dedent(f"""
-            usage: {sys.argv[0]} SPEC
+    usage = textwrap.dedent(f"""
+    usage: {sys.argv[0]} [OPTIONS] SPEC
 
-            where SPEC is any sequence of the following characters:
-                r   insert a report
-                e   insert an edit into every report
-                t   insert a topic
-                c   insert a comment into every topic
-                u   insert a user
-            """).strip(),
-            file=sys.stderr,
-        )
-        exit(1)
+    where SPEC is any sequence of the following characters:
+        r   insert a report
+        e   insert an edit into every report
+        t   insert a topic
+        c   insert a comment into every topic
+        u   insert a user
+    """).strip()
 
-        print(f"usage: {sys.argv[0]} SPEC", file=sys.stderr)
-        print(f"where SPEC is any combination of the following characters:", file=sys.stderr)
+    parser = argparse.ArgumentParser(usage=usage)
+    parser.add_argument("--pgpath", default="/tmp/filmware", help="path to postgres dir")
+    parser.add_argument("SPEC", nargs="*")
+    args = parser.parse_args()
 
-    asyncio.run(main(sys.argv[1:]))
+    main(sys.argv[1:], args.pgpath)

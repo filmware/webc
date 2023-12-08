@@ -22,3 +22,11 @@ def swc(path, out, workdir=SRC):
 web_compiled = swc(SRC/"../web/src", BLD/"web")
 # pick a workdir that causes a build tree we like
 demo_compiled = swc(SRC/"demo/src", BLD/"demo", workdir=SRC/"decisions")
+
+deps = add_target(
+    STAMP=BLD/"deps",
+    inputs=[SRC/"requirements.txt"],
+    outputs=["$STAMP"],
+    command="pip install -r requirements.txt && touch $STAMP",
+    workdir=SRC,
+)

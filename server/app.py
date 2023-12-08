@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import asyncio
 import json
 import logging
@@ -8,6 +9,7 @@ import uuid
 import datetime
 import secrets
 import base64
+import os
 
 import asyncpg
 from aiohttp import web
@@ -109,17 +111,6 @@ async def waitgroup(*coros):
 
 
 #### begin server ####
-
-
-def pgify(func):
-    async def decorated(*args, **kwargs):
-        conn = await asyncpg.connect(host="/tmp/filmware", database="filmware")
-        try:
-            return await func(conn, *args, **kwargs)
-        finally:
-            await conn.close()
-
-    return decorated
 
 
 class Listener:
@@ -589,7 +580,7 @@ class CommentsSpec(SubscriptionSpec):
 
 
 class Subscription:
-    def __init__(self, w, mux_id, obj):
+    def __init__(self, pgpath, w, mux_id, obj):
         extra = set(obj.keys()).difference({
             "type",
             "mux_id",
@@ -603,6 +594,7 @@ class Subscription:
         })
         if extra:
             raise ValueError(f"unrecognized keys: {extra}")
+        self.pgpath = pgpath
         self.w = w
         self.mux_id = mux_id
         self.projects = AllProjects.from_json(obj.get("projects"))
@@ -646,9 +638,7 @@ class Subscription:
         return spec and spec.pred(obj)
 
     async def fetch_initial(self):
-        conn = await asyncpg.connect(
-            host="/tmp/filmware", database="filmware"
-        )
+        conn = await asyncpg.connect(host=self.pgpath, database="filmware")
         try:
             for spec in self.specmap.values():
                 if spec is not None:
@@ -689,7 +679,8 @@ class UserError(Exception):
 
 
 class Reader:
-    def __init__(self, ws, l, w, user):
+    def __init__(self, pgpath, ws, l, w, user):
+        self.pgpath = pgpath
         self.ws = ws
         self.l = l
         self.w = w
@@ -705,7 +696,7 @@ class Reader:
             if typ in ("subscribe", "fetch"):
                 if mux_id in self.subs:
                     raise UserError(f"duplicate mux_id: {mux_id}")
-                sub = Subscription(self.w, mux_id, obj)
+                sub = Subscription(self.pgpath, self.w, mux_id, obj)
                 self.subs[mux_id] = sub
                 if typ == "subscribe":
                     self.l.add_subscriber(sub)
@@ -730,9 +721,7 @@ class Reader:
         for obj in objects:
             typed[obj["type"]].append(obj)
 
-        conn = await asyncpg.connect(
-            host="/tmp/filmware", database="filmware"
-        )
+        conn = await asyncpg.connect(host=self.pgpath, database="filmware")
         try:
             # use a transaction to avoid implicit commits between inserts
             async with conn.transaction():
@@ -895,17 +884,28 @@ async def authenticate(conn, msg):
     else:
         raise ValueError(f"unknown authentication message type {typ}")
 
-
 @route.get("/ws")
-@pgify
-async def ws_handler(conn, request):
+async def ws_handler(request):
+    pgpath = request.app["pgpath"]
+    conn = await asyncpg.connect(host=pgpath, database="filmware")
+    try:
+        return await ws_handler_pg(request, conn)
+    finally:
+        await conn.close()
+
+
+async def ws_handler_pg(request, conn):
+    pgpath = request.app["pgpath"]
     try:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
         # wait for successful authentication
         while True:
-            msg = await ws.receive_json()
+            msg = await ws.receive()
+            assert msg.type == web.WSMsgType.TEXT, web.WSMsgType(msg.type).name
+            msg = json.loads(msg.data)
+            # msg = await ws.receive_json()
             result = await authenticate(conn, msg)
             if result:
                 break
@@ -978,7 +978,7 @@ async def ws_handler(conn, request):
         # Writer to write results to the websocket
         w = Writer(ws)
         # Reader to read and process messages from the client
-        r = Reader(ws, l, w, user)
+        r = Reader(pgpath, ws, l, w, user)
 
         # don't outlive our session expiry
         async def expire():
@@ -998,18 +998,76 @@ async def ws_handler(conn, request):
         raise
 
 
-async def amain():
+MIME_TYPES = {
+    ".css": "text/css",
+    ".html": "text/html",
+    ".ico": "image/vnd.microsoft.icon",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".js": "application/javascript",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".webmanifest": "application/json",
+    ".woff2": "font/woff2",
+    ".xml": "application/xml",
+}
+
+
+async def amain(dist, unix, pgpath):
     app = web.Application()
+    app["pgpath"] = pgpath
+
+    if dist:
+        # serve $dist/index.html at "/" at highest priority
+        @route.get("/{path:.*}")
+        def get_static(request):
+            path = request.match_info["path"]
+            distpath = os.path.join(dist, path)
+            # check for requests of files outside of dist
+            if os.path.relpath(distpath, dist).startswith(".."):
+                raise web.HTTPNotFound()
+
+            # directories point to index.html
+            if os.path.isdir(distpath):
+                distpath = os.path.join(distpath, "index.html")
+
+            # if this doesn't correspond to a file, just point to index.html
+            if not os.path.exists(distpath):
+                distpath = os.path.join(dist, "index.html")
+
+            _, ext = os.path.splitext(distpath)
+            mime_type = MIME_TYPES.get(ext, "application/octet-stream")
+
+            with open(os.path.join(distpath), "rb") as f:
+                byts = f.read()
+
+            resp = web.Response()
+            resp.headers["Content-Type"] = mime_type
+            resp.body = byts
+            return resp
+
     app.add_routes(route)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, 'localhost', 8080)
+    if unix:
+        site = web.UnixSite(runner, unix)
+        listener = unix
+    else:
+        site = web.TCPSite(runner, 'localhost', 8080)
+        listener = 'http://localhost:8080'
     await site.start()
-    print("\x1b[32mapp.py is listening on http://localhost:8080\x1b[m", file=sys.stderr)
+    print(f"\x1b[32mapp.py is listening on {listener}\x1b[m", file=sys.stderr)
     try:
         await asyncio.sleep(sys.maxsize)
     finally:
         await runner.cleanup()
 
+
 if __name__ == '__main__':
-    asyncio.run(amain())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dist")
+    parser.add_argument("--unix")
+    parser.add_argument("--pgpath", default="/tmp/filmware")
+    args = parser.parse_args(sys.argv[1:])
+
+    asyncio.run(amain(args.dist, args.unix, args.pgpath))

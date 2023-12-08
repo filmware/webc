@@ -298,10 +298,8 @@ async def random_user(conn):
     return random.choice(all_users)
 
 
-async def save(results):
-    conn = await asyncpg.connect(
-        host="/tmp/filmware", database="filmware"
-    )
+async def save(results, pghost):
+    conn = await asyncpg.connect(host=pghost, database="filmware")
 
     user = await random_user(conn)
 
@@ -370,7 +368,7 @@ def detect_kind(file):
     return "scripte-csv"
 
 
-def main(kind, file, want_save):
+def main(kind, file, want_save, pghost="/tmp/filmware"):
     kind = kind or detect_kind(file)
 
     standard = {
@@ -496,7 +494,7 @@ def main(kind, file, want_save):
     results = ingest_all(table, spec["reports"])
 
     if want_save:
-        asyncio.run(save(results))
+        asyncio.run(save(results, pghost))
     else:
         for r in results:
             print("\n#######\n")

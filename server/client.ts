@@ -48,6 +48,9 @@ class Advancer {
     }
 };
 
+type Uuid = string;
+type UuidRecord<T> = Record<Uuid, T>;
+
 /* FWClient is the logical unit of synchronization.  It is an interface because
    it can be implemented either directly over a websocket or through a
    replicator built around an IndexedDB, or through a port to SharedWorker. */
@@ -399,16 +402,16 @@ function isBeforeSort(a: any, akind: string, b: any, bkind: string): number {
 }
 
 class FWComments {
-    observable: Observable<Record<string, FWComment>>;
-    onSync?: {(): void};
+    observable: Observable<UuidRecord<FWComment>>;
+    onSync?: {(payload: UuidRecord<FWComment>): void};
 
-    private writable: WritableObservable<Record<string, FWComment>>;
+    private writable: WritableObservable<UuidRecord<FWComment>>;
     private sub: FWSubscription;
     private advancer: Advancer;
     private recvd?: any = null;
-    private comments: Record<string, FWComment> = {};
-    private unresolved: Record<string, any[]> = {};
-    private allParents: Record<string, boolean> = {};
+    private comments: UuidRecord<FWComment> = {};
+    private unresolved: UuidRecord<any[]> = {};
+    private allParents: UuidRecord<boolean> = {};
 
     private onSyncSent: boolean = false;
 
@@ -489,7 +492,7 @@ class FWComments {
             };
 
             // read diffs, apply to our comments map
-            // "x" = e"x"isting commet
+            // "x" = e"x"isting comment
             let x = this.comments[uuid];
             if(!x){
                 // new comment
@@ -545,7 +548,7 @@ class FWComments {
             this.onSyncSent = true;
             setTimeout(() => {
                 if(!this.advancer.doneUp && this.onSync){
-                    this.onSync();
+                    this.onSync(this.observable.get());
                 }
             });
         }
@@ -699,7 +702,7 @@ class Demo {
 }
 
 function printList(
-    all: Record<string, FWComment>, comments: FWComment[], indent: string = ""
+    all: UuidRecord<FWComment>, comments: FWComment[], indent: string = ""
 ): void {
     comments.sort((a, b) => {
         return isBeforeSort(a, "submissiontime", b, "submissiontime");
@@ -715,7 +718,7 @@ function printList(
     });
 }
 
-function printComments(comments: Record<string, FWComment>): void {
+function printComments(comments: UuidRecord<FWComment>): void {
     let top = [];
     for(let uuid in comments){
         let c = comments[uuid];

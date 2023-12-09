@@ -372,15 +372,15 @@ class FWRequestWS {
 class FWComment {
     srvId: number; // only for tie-breaker sorting
     seqno: number; // only for tie-breaker sorting
-    uuid: string;
-    topic: string;
-    project: string;
-    user: string;
+    uuid: Uuid;
+    topic: Uuid;
+    project: Uuid;
+    user: Uuid;
     body: string;
-    parent?: string; // parent uuid
+    parent?: Uuid; // parent uuid
 
     // whose parent are we
-    children: string[]; // list of child uuids
+    children: Uuid[]; // list of child uuids
     submissiontime: Date;
     authortime: Date;
     edittime?: Date;
@@ -411,7 +411,6 @@ class FWComments {
     private recvd?: any = null;
     private comments: UuidRecord<FWComment> = {};
     private unresolved: UuidRecord<any[]> = {};
-    private allParents: UuidRecord<boolean> = {};
 
     private onSyncSent: boolean = false;
 
@@ -430,118 +429,96 @@ class FWComments {
         this.observable = this.writable.readOnly();
     }
 
-    private resolve(msg: any): any[] {
+    private processMsg(msg: any): void{
         const uuid = msg["comment"];
-        this.allParents[uuid] = true;
-        let out = [msg];
-        let newResolved = this.unresolved[uuid];
-        if(newResolved){
-            delete this.unresolved[uuid];
-            newResolved.forEach((msg) => {
-                out.push(...this.resolve(msg));
-            });
-        }
-        return out;
-    }
+        const parent = msg["parent"];
 
-    private processRecvd(): void {
-        // do we have any updates to process?
-        if(!this.recvd.length) return;
-
-        // Deal with unresolved comments.  Currently, unresolved means:
-        //  - parent is defined but not present
-
-        let resolved = []
-
-        // sort received into resolved and unresolved, promoting as needed
-        this.recvd.forEach((msg) => {
-            const uuid = msg["comment"];
-            const parent = msg["parent"];
-            if(parent === null){
-                // top-level comments are always resolved
-                resolved.push(...this.resolve(msg));
-            }else if(parent in this.allParents){
-                // parent already exists
-                resolved.push(...this.resolve(msg));
-            }else if(parent in this.unresolved){
+        // can we resolve this message yet?
+        if(parent != null && !(parent in this.comments)){
+            // comment has a parent, but we haven't seen it yet
+            if(parent in this.unresolved){
                 this.unresolved[parent].push(msg);
             }else{
                 this.unresolved[parent] = [msg];
             }
-        });
-        this.recvd = [];
+            // we'll come back to it later
+            return;
+        }
 
-        // now apply comment msg events to FWComment objects
-        let newChildren = [];
-        resolved.forEach((msg) => {
-            const uuid = msg["comment"];
+        let c = {
+            srvId: msg["srvId"],
+            seqno: msg["seqno"],
+            uuid: uuid,
+            topic: msg["topic"],
+            project: msg["project"],
+            user: msg["user"], // todo: link to users instead
+            parent: msg["parent"],
+            body: msg["body"],
+            submissiontime: msg["submissiontime"],
+            authortime: msg["authortime"],
+            edittime: null,
+            children: [],
+        };
 
-            let c = {
-                srvId: msg["srvId"],
-                seqno: msg["seqno"],
-                uuid: uuid,
-                topic: msg["topic"],
-                project: msg["project"],
-                user: msg["user"], // todo: link to users instead
-                parent: msg["parent"],
-                body: msg["body"],
-                submissiontime: msg["submissiontime"],
-                authortime: msg["authortime"],
-                edittime: null,
-                children: [],
-            };
-
-            // read diffs, apply to our comments map
-            // "x" = e"x"isting comment
-            let x = this.comments[uuid];
-            if(!x){
-                // new comment
-                this.comments[uuid] = c;
-                if(c.parent){
-                    newChildren.push([uuid, c.parent]);
-                }
-            }else if(
-                // c is an update to x...
-                isBefore(x, "authortime", c, "authortime")
-                // but c is not the latest update to x...
-                && isBefore(c, "authortime", x, "edittime")
-            ){
-                // ignore already-obsolete updates
-            }else{
-                // c updates x, or x updates c
-                let [older, newer] =
-                    isBefore(x, "authortime", c, "authortime")
-                    ?  [x, c] : [c, x];
-                this.comments[uuid] = {
-                    // preserve immutable fields and child links
-                    /* (note we are trusting the update to not make illegal
-                        modifications) */
-                    ...x,
-                    // update mutable content
-                    srvId: older.srvId,
-                    seqno: older.seqno,
-                    submissiontime: older.submissiontime,
-                    authortime: older.authortime,
-                    body: newer.body,
-                    edittime: newer.authortime,
-                }
+        // read diffs, apply to our comments map
+        // "x" = e"x"isting comment
+        let x = this.comments[uuid];
+        let recurse = [];
+        if(!x){
+            // new comment
+            this.comments[uuid] = c;
+            if(c.parent){
+                // add ourselves to our parent's children list
+                this.comments[c.parent].children.push(uuid);
             }
-        });
+            // check if any unresolved messages are newly resolvable
+            let newResolved = this.unresolved[uuid];
+            if(newResolved){
+                delete this.unresolved[uuid];
+                // we'll process them at the end of this call
+                recurse.push(...newResolved);
+            }
+        }else if(
+            // c is an update to x...
+            isBefore(x, "authortime", c, "authortime")
+            // but c is not the latest update to x...
+            && isBefore(c, "authortime", x, "edittime")
+        ){
+            // ignore already-obsolete updates
+        }else{
+            // c updates x, or x updates c
+            let [older, newer] =
+                isBefore(x, "authortime", c, "authortime")
+                ?  [x, c] : [c, x];
+            this.comments[uuid] = {
+                // preserve immutable fields and child links
+                /* (note we are trusting the update to not make illegal
+                    modifications) */
+                ...x,
+                // update mutable content
+                srvId: older.srvId,
+                seqno: older.seqno,
+                submissiontime: older.submissiontime,
+                authortime: older.authortime,
+                body: newer.body,
+                edittime: newer.authortime,
+            }
+        }
 
-        // now that all FWComment objects are created, update children links
-        newChildren.forEach(([child,  parent]) => {
-            this.comments[parent].children.push(child);
-        });
-
-        // finally, update the observable
-        this.writable.set({...this.comments})
+        recurse.forEach((msg) => { this.processMsg(msg); });
     }
 
     private advanceUp(): void {
         // wait for initial sync
         if(!this.recvd) return;
 
-        this.processRecvd();
+        // process recvd, and any messages which become resolvable as a result
+        this.recvd.forEach((msg) => this.processMsg(msg));
+
+        this.recvd = [];
+
+        // update the observable
+        this.writable.set({...this.comments})
 
         // send onSync after we have processed our own sync msg
         if(!this.onSyncSent){

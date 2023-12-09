@@ -370,6 +370,7 @@ class FWRequestWS {
 }
 
 class FWComment {
+    // TODO: do I need to keep track of the version uuid here for react?
     srvId: number; // only for tie-breaker sorting
     seqno: number; // only for tie-breaker sorting
     uuid: Uuid;
@@ -494,17 +495,22 @@ class FWComments {
                 recurse.push(...newResolved);
             }
         }else if(
-            // c is an update to prev...
-            isBefore(prev, "authortime", c, "authortime")
+            // prev has already been edited...
+            prev.edittime
+            // and c is an update to prev...
+            && isBefore(prev, "authortime", c, "authortime")
             // but c is not the latest update to prev...
             && isBefore(c, "authortime", prev, "edittime")
         ){
             // ignore already-obsolete updates
         }else{
-            // c updates prev, or prev updates c
-            let [older, newer] =
-                isBefore(prev, "authortime", c, "authortime")
-                ?  [prev, c] : [c, prev];
+            // we have an update
+            const prevIsOlder = isBefore(prev, "authortime", c, "authortime");
+            let [older, newer] = prevIsOlder ? [prev, c] : [c, prev];
+            if(!prevIsOlder){
+                // a resort will also be called for
+                out[c.parent || "topLevels"] = true;
+            }
             this.comments[uuid] = {
                 // preserve immutable fields and child links
                 /* (note we are trusting the update to not make illegal
@@ -517,7 +523,7 @@ class FWComments {
                 authortime: older.authortime,
                 body: newer.body,
                 edittime: newer.authortime,
-            }
+            };
         }
 
         recurse.forEach(
@@ -528,15 +534,7 @@ class FWComments {
 
     private sortUuids(list: Uuid[]): Uuid[] {
         // do all map lookups once
-        let temp = list.map((uuid) => {
-            const c = this.comments[uuid];
-            return {
-                uuid: uuid,
-                srvId: c.srvId,
-                seqno: c.seqno,
-                submissiontime: c.submissiontime,
-            };
-        });
+        let temp = list.map((uuid) => this.comments[uuid]);
 
         // sort by submissiontime
         temp.sort((a, b) => {
@@ -544,7 +542,7 @@ class FWComments {
         });
 
         // return just the sorted uuids
-        return temp.map((obj) => obj.uuid);
+        return temp.map((c) => c.uuid);
     }
 
     private advanceUp(): void {
@@ -603,6 +601,175 @@ class FWComments {
     }
 }
 
+class FWTopic {
+    // TODO: do I need to keep track of the version uuid here for react?
+    srvId: number; // only for tie-breaker sorting
+    seqno: number; // only for tie-breaker sorting
+    uuid: Uuid;
+    project: Uuid;
+    user: Uuid;
+    name: string;
+    links: any;
+
+    /* more info TDB.  I expect collecting some summary data (comment count,
+       date of most recent activity, etc) would be seriously useful to the
+       online-only web client (though it would be calculated offline for the
+       indexed-db-based web client), but the server needs to be written to
+       track that information. */
+
+    submissiontime: Date;
+    authortime: Date;
+    edittime?: Date = null;
+}
+
+class FWTopicsResult {
+    topics: UuidRecord<FWTopic>;
+    bySubmit: Uuid[];
+};
+
+class FWTopics {
+    observable: Observable<FWTopicsResult>;
+    // onSync fires shortly after the observable are populated the first time
+    onSync?: {(result: FWTopicsResult): void};
+
+    private writable: WritableObservable<FWTopicsResult>;
+    private sub: FWSubscription;
+    private advancer: Advancer;
+    private recvd?: any = null;
+    private topics: UuidRecord<FWTopic> = {};
+    private bySubmit: Uuid[] = [];
+
+    private onSyncSent: boolean = false;
+
+    constructor(client: FWClient, spec: any) {
+        this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
+        this.sub = client.subscribe({"topics": spec});
+        this.sub.onSync = (payload) => {
+            this.recvd = payload;
+            this.advancer.schedule(null);
+        };
+        this.sub.onMsg = (msg) => {
+            this.recvd.push(msg);
+            this.advancer.schedule(null);
+        }
+        this.writable = observable(undefined);
+        this.observable = this.writable.readOnly();
+    }
+
+    // returns true if a sort is called for
+    private processMsg(msg): boolean {
+        const uuid = msg["topic"];
+        let wantSort = false;
+
+        let t = {
+            srvId: msg["srvId"],
+            seqno: msg["seqno"],
+            uuid: uuid,
+            project: msg["project"],
+            user: msg["user"],
+            name: msg["name"],
+            links: msg["links"],
+            submissiontime: msg["submissiontime"],
+            authortime: msg["authortime"],
+            edittime: null,
+        };
+
+        let prev = this.topics[uuid];
+        if(!prev){
+            // this is a new topic
+            this.topics[uuid] = t;
+            this.bySubmit.push(uuid);
+            wantSort = true;
+        }else if(
+            // prev has already been edited...
+            prev.edittime
+            // and t is an update to prev...
+            && isBefore(prev, "authortime", t, "authortime")
+            // but t is not the latest update to prev...
+            && isBefore(t, "authortime", prev, "edittime")
+        ){
+            // ignore already-obsolete updates
+        }else{
+            // we have an update
+            // t updates prev
+            const prevIsOlder = isBefore(prev, "authortime", t, "authortime");
+            let [older, newer] = prevIsOlder ? [prev, t] : [t, prev];
+            if(!prevIsOlder){
+                // a resort is called for
+                wantSort = true;
+            }
+            this.topics[uuid] = {
+                // preserve immutable fields
+                /* (note we are trusting the update to not make illegal
+                    modifications) */
+                ...prev,
+                // update mutable content
+                srvId: older.srvId,
+                seqno: older.seqno,
+                submissiontime: older.submissiontime,
+                authortime: older.authortime,
+                name: newer.name,
+                links: newer.links,
+                edittime: newer.authortime,
+            };
+        }
+
+        return wantSort;
+    }
+
+    private advanceUp(): void {
+        // wait for initial sync
+        if(!this.recvd) return;
+
+        // process recvd, and any messages which become resolvable as a result
+        let wantSort = false;
+        this.recvd.forEach((msg) => {
+            wantSort = this.processMsg(msg) || wantSort;
+        });
+        this.recvd = [];
+
+        if(wantSort){
+            let temp = this.bySubmit.map((uuid) => this.topics[uuid]);
+
+            // sort by submissiontime
+            temp.sort((a, b) => {
+                return isBeforeSort(a, "submissiontime", b, "submissiontime");
+            });
+
+            this.bySubmit = temp.map((t) => t.uuid);
+        }
+
+
+        // update the observable
+        this.writable.set({
+            topics: {...this.topics},
+            bySubmit: this.bySubmit,
+        });
+
+        // send onSync after we have processed our own sync msg
+        if(!this.onSyncSent){
+            this.onSyncSent = true;
+            setTimeout(() => {
+                if(!this.advancer.doneUp && this.onSync){
+                    this.onSync(this.observable.get());
+                }
+            });
+        }
+    }
+
+    private advanceDn(error): void {
+        // this should actually never run
+        console.log("unexpected FWTopics.advanceDn() error:", error);
+    }
+
+    close(): void {
+        this.advancer.doneUp = true;
+        this.sub.close();
+        // there's no cleanup to be done
+        this.advancer.doneDn = true;
+    }
+}
+
 class Demo {
     client: FWClientWS;
     advancer: Advancer;
@@ -620,6 +787,10 @@ class Demo {
     upload_started: boolean = false;
     upload_done: boolean = false;
     stream_started: boolean = false;
+    want_render: boolean = false;
+
+    comments?: FWCommentsResult = null;
+    topics?: FWTopicsResult = null;
 
     constructor(){
         this.client = new FWClientWS("ws://localhost:8080/ws");
@@ -723,14 +894,46 @@ class Demo {
         if(!this.stream_started){
             this.stream_started = true;
             // now stream comments from the topic we found
-            let store = new FWComments(
+            let commentsStore = new FWComments(
                 this.client, {"match": "topic", "value": this.topic}
             );
             // for now, we'll just print stuff to the console
-            store.observable.subscribe((result) => {
-                printComments(result.comments, result.topLevels);
+            commentsStore.observable.subscribe((result) => {
+                this.comments = result;
+                this.want_render = true;
+                this.advancer.schedule(null);
+            });
+            // also stream all topics
+            let topicsStore = new FWTopics(
+                this.client, {"match": "project", "value": this.project}
+            );
+            // for now, we'll just print stuff to the console
+            topicsStore.observable.subscribe((result) => {
+                this.topics = result;
+                this.want_render = true;
+                this.advancer.schedule(null);
             });
         }
+
+        if(this.comments && this.topics && this.want_render){
+            this.want_render = false;
+            this.render();
+        }
+    }
+
+    render() {
+        console.log("\x1b[2J\x1b[1;1H" + "TOPICS:")
+        this.topics.bySubmit.map(
+            (uuid) => this.topics.topics[uuid]
+        ).forEach((t) => {
+            const id = t.uuid.substring(0, 8);
+            const when = t.submissiontime;
+            const name = t.name.substring(0,40);
+            console.log(`  ${id}:${when}: ${name}`);
+        });
+        console.log("");
+        console.log(`\nCOMMENTS (${this.topic}):`);
+        printComments(this.comments.comments, this.comments.topLevels, "  ");
     }
 
     advanceDn(error){
@@ -742,14 +945,16 @@ class Demo {
 function printComments(
     all: UuidRecord<FWComment>, uuids: Uuid[], indent: string = ""
 ): void {
-    uuids.forEach((uuid, idx) => {
-        const c = all[uuid];
-        // very first print resets the screen
-        const pre = (indent == "" && idx == 0) ? "\x1b[2J\x1b[1;1H" : "";
-        // edits are flagged as "*"
-        const post = c.edittime ? " *" : "";
-        console.log(`${pre}${indent}${c.uuid}${post}`);
+    uuids.map((uuid) => all[uuid]).forEach((c) => {
+        const edit = c.edittime ? "*" : "";
+        const id = c.uuid.substring(0, 8);
+        const text = c.body.substring(0, 40);
+        console.log(`${indent}${id}: ${edit}${text}`);
         printComments(all, c.children, indent + "  ");
+    });
+    uuids.forEach((uuid) => {
+        const c = all[uuid];
+        // edits are flagged as "*"
     });
 }
 

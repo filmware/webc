@@ -366,7 +366,10 @@ class TopicsSpec(SubscriptionSpec):
                 topic,
                 project,
                 "user",
+                name,
                 links,
+                submissiontime,
+                authortime,
                 archivetime
             from topics
             {where}

@@ -401,15 +401,24 @@ function isBeforeSort(a: any, akind: string, b: any, bkind: string): number {
     return isBefore(a, akind, b, bkind) ? -1 : 1;
 }
 
-class FWComments {
-    observable: Observable<UuidRecord<FWComment>>;
-    onSync?: {(payload: UuidRecord<FWComment>): void};
+class FWCommentsResult {
+    // comments is all comments this store knows of.
+    comments: UuidRecord<FWComment>;
+    // topLevels are comments with a null parent, sorted by submissiontime
+    topLevels: Uuid[];
+}
 
-    private writable: WritableObservable<UuidRecord<FWComment>>;
+class FWComments {
+    observable: Observable<FWCommentsResult>;
+    // onSync fires shortly after the observable are populated the first time
+    onSync?: {(result: FWCommentsResult): void};
+
+    private writable: WritableObservable<FWCommentsResult>;
     private sub: FWSubscription;
     private advancer: Advancer;
     private recvd?: any = null;
     private comments: UuidRecord<FWComment> = {};
+    private tops: string[] = [];
     private unresolved: UuidRecord<any[]> = {};
 
     private onSyncSent: boolean = false;
@@ -425,13 +434,15 @@ class FWComments {
             this.recvd.push(msg);
             this.advancer.schedule(null);
         }
-        this.writable = observable({});
+        this.writable = observable(undefined);
         this.observable = this.writable.readOnly();
     }
 
-    private processMsg(msg: any): void{
+    // returns a set of comment uuids whose child lists need resolving.
+    private processMsg(msg: any): UuidRecord<boolean> {
         const uuid = msg["comment"];
         const parent = msg["parent"];
+        let out = {};
 
         // can we resolve this message yet?
         if(parent != null && !(parent in this.comments)){
@@ -442,7 +453,7 @@ class FWComments {
                 this.unresolved[parent] = [msg];
             }
             // we'll come back to it later
-            return;
+            return out;
         }
 
         let c = {
@@ -461,15 +472,19 @@ class FWComments {
         };
 
         // read diffs, apply to our comments map
-        // "x" = e"x"isting comment
-        let x = this.comments[uuid];
+        let prev = this.comments[uuid];
         let recurse = [];
-        if(!x){
+        if(!prev){
             // new comment
             this.comments[uuid] = c;
             if(c.parent){
-                // add ourselves to our parent's children list
+                // add this comment to its parent's children list
                 this.comments[c.parent].children.push(uuid);
+                out[c.parent] = true;
+            }else{
+                // add this comment to our list of top-level comments
+                this.tops.push(uuid);
+                out["topLevels"] = true;
             }
             // check if any unresolved messages are newly resolvable
             let newResolved = this.unresolved[uuid];
@@ -479,22 +494,22 @@ class FWComments {
                 recurse.push(...newResolved);
             }
         }else if(
-            // c is an update to x...
-            isBefore(x, "authortime", c, "authortime")
-            // but c is not the latest update to x...
-            && isBefore(c, "authortime", x, "edittime")
+            // c is an update to prev...
+            isBefore(prev, "authortime", c, "authortime")
+            // but c is not the latest update to prev...
+            && isBefore(c, "authortime", prev, "edittime")
         ){
             // ignore already-obsolete updates
         }else{
-            // c updates x, or x updates c
+            // c updates prev, or prev updates c
             let [older, newer] =
-                isBefore(x, "authortime", c, "authortime")
-                ?  [x, c] : [c, x];
+                isBefore(prev, "authortime", c, "authortime")
+                ?  [prev, c] : [c, prev];
             this.comments[uuid] = {
                 // preserve immutable fields and child links
                 /* (note we are trusting the update to not make illegal
                     modifications) */
-                ...x,
+                ...prev,
                 // update mutable content
                 srvId: older.srvId,
                 seqno: older.seqno,
@@ -505,7 +520,31 @@ class FWComments {
             }
         }
 
-        recurse.forEach((msg) => { this.processMsg(msg); });
+        recurse.forEach(
+            (msg) => { out = {...out, ...this.processMsg(msg)}; }
+        );
+        return out;
+    }
+
+    private sortUuids(list: Uuid[]): Uuid[] {
+        // do all map lookups once
+        let temp = list.map((uuid) => {
+            const c = this.comments[uuid];
+            return {
+                uuid: uuid,
+                srvId: c.srvId,
+                seqno: c.seqno,
+                submissiontime: c.submissiontime,
+            };
+        });
+
+        // sort by submissiontime
+        temp.sort((a, b) => {
+            return isBeforeSort(a, "submissiontime", b, "submissiontime");
+        });
+
+        // return just the sorted uuids
+        return temp.map((obj) => obj.uuid);
     }
 
     private advanceUp(): void {
@@ -513,12 +552,32 @@ class FWComments {
         if(!this.recvd) return;
 
         // process recvd, and any messages which become resolvable as a result
-        this.recvd.forEach((msg) => this.processMsg(msg));
-
+        let reSort = {};
+        this.recvd.forEach(
+            (msg) => reSort = {...reSort, ...this.processMsg(msg)}
+        );
         this.recvd = [];
 
+        // re-sort any objects with updated lists
+        for(let key in reSort){
+            if(key === "topLevels"){
+                this.tops = this.sortUuids(this.tops);
+            }else{
+                const c = this.comments[key];
+                this.comments[key] = {
+                    ...c, children: this.sortUuids(c.children)
+                };
+            }
+        }
+
         // update the observable
-        this.writable.set({...this.comments})
+        this.writable.set({
+            /* the only case where map was not updated is if we received only
+               stale updates, which will be virtually never */
+            comments: {...this.comments},
+            // topLevels is updated IFF this.tops was updated
+            topLevels: this.tops,
+        });
 
         // send onSync after we have processed our own sync msg
         if(!this.onSyncSent){
@@ -664,11 +723,13 @@ class Demo {
         if(!this.stream_started){
             this.stream_started = true;
             // now stream comments from the topic we found
-            let comments = new FWComments(
+            let store = new FWComments(
                 this.client, {"match": "topic", "value": this.topic}
             );
             // for now, we'll just print stuff to the console
-            comments.observable.subscribe(printComments);
+            store.observable.subscribe((result) => {
+                printComments(result.comments, result.topLevels);
+            });
         }
     }
 
@@ -678,32 +739,18 @@ class Demo {
     }
 }
 
-function printList(
-    all: UuidRecord<FWComment>, comments: FWComment[], indent: string = ""
+function printComments(
+    all: UuidRecord<FWComment>, uuids: Uuid[], indent: string = ""
 ): void {
-    comments.sort((a, b) => {
-        return isBeforeSort(a, "submissiontime", b, "submissiontime");
-    });
-    comments.forEach((c, idx) => {
+    uuids.forEach((uuid, idx) => {
+        const c = all[uuid];
         // very first print resets the screen
-        let pre = (indent == "" && idx == 0) ? "\x1b[2J\x1b[1;1H" : "";
+        const pre = (indent == "" && idx == 0) ? "\x1b[2J\x1b[1;1H" : "";
         // edits are flagged as "*"
-        let post = c.edittime ? " *" : "";
+        const post = c.edittime ? " *" : "";
         console.log(`${pre}${indent}${c.uuid}${post}`);
-        let children = c.children.map((uuid) => all[uuid]);
-        printList(all, children, indent + "  ");
+        printComments(all, c.children, indent + "  ");
     });
-}
-
-function printComments(comments: UuidRecord<FWComment>): void {
-    let top = [];
-    for(let uuid in comments){
-        let c = comments[uuid];
-        if(c.parent == null){
-            top.push(c);
-        }
-    }
-    printList(comments, top);
 }
 
 let demo = new Demo();

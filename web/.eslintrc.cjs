@@ -30,7 +30,7 @@ module.exports = {
     ecmaVersion: 2020,
     sourceType: 'module',
   },
-  plugins: ['import', 'react', 'react-hooks', 'react-refresh', 'sort-keys-fix'],
+  plugins: ['import', 'react', 'react-hooks', 'react-refresh'],
   rules: {
     'react-refresh/only-export-components': [
       'warn',
@@ -79,7 +79,7 @@ module.exports = {
       },
     ],
     'keyword-spacing': ['error'],
-    'no-console': ['error', { allow: ['error'] }],
+    'no-console': ['error', { allow: ['error', 'warn'] }],
     'no-duplicate-imports': 'error',
     'no-empty': ['error', { allowEmptyCatch: false }],
     'no-multi-spaces': ['error', { ignoreEOLComments: true }],
@@ -143,14 +143,6 @@ module.exports = {
         ignoreCase: true,
         ignoreDeclarationSort: true,
         ignoreMemberSort: false,
-      },
-    ],
-    'sort-keys-fix/sort-keys-fix': [
-      'error',
-      'asc',
-      {
-        caseSensitive: false,
-        natural: true,
       },
     ],
     'space-in-parens': ['error', 'never'],

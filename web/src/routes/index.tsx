@@ -1,24 +1,24 @@
-import { RouteProps } from 'react-router-dom'
+import { RouteProps } from 'react-router-dom';
 
-import Authenticated from '@/pages/Authenticated'
-import Dashboard from '@/pages/Authenticated/Dashboard'
-import SignIn from '@/pages/SignIn'
-import SignOut from '@/pages/SignOut'
+import Authenticated from '@/pages/Authenticated';
+import Dashboard from '@/pages/Authenticated/Dashboard';
+import SignIn from '@/pages/SignIn';
+import SignOut from '@/pages/SignOut';
 
 type RouteConfig = {
-  authRequired?: boolean
-  id: string
-  path: string
-  popout?: boolean
-  redirect?: string
-  title?: string
-} & RouteProps
+  authRequired?: boolean;
+  id: string;
+  path: string;
+  popout?: boolean;
+  redirect?: string;
+  title?: string;
+} & RouteProps;
 
 export const appPaths = {
   authenticated: () => '/*',
   signIn: () => '/sign-in',
   signOut: () => '/sign-out',
-}
+};
 
 export const appRoutes: RouteConfig[] = [
   {
@@ -37,11 +37,11 @@ export const appRoutes: RouteConfig[] = [
     id: 'sign-in',
     path: appPaths.signOut(),
   },
-]
+];
 
 export const authPaths = {
   dashboard: () => '/app',
-}
+};
 
 export const authRoutes: RouteConfig[] = [
   {
@@ -54,4 +54,4 @@ export const authRoutes: RouteConfig[] = [
     path: '*',
     redirect: authPaths.dashboard(),
   },
-]
+];

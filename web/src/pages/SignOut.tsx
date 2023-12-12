@@ -1,5 +1,5 @@
 function SignOut() {
-  return <div>Sign Out</div>
+  return <div>Sign Out</div>;
 }
 
-export default SignOut
+export default SignOut;

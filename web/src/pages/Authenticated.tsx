@@ -1,4 +1,4 @@
-import AuthRouter from '@/routes/AuthRouter'
+import AuthRouter from '@/routes/AuthRouter';
 
 function Authenticated() {
   return (
@@ -6,7 +6,7 @@ function Authenticated() {
       Authenticated
       <AuthRouter />
     </div>
-  )
+  );
 }
 
-export default Authenticated
+export default Authenticated;

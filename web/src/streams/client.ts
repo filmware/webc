@@ -1,4 +1,5 @@
 import { Advancer } from './utils';
+import { WebSock } from './websock';
 
 /* FWClient is the logical unit of synchronization.  It is an interface because it can be
    implemented either directly over a websocket or through a replicator built around an IndexedDB,
@@ -31,7 +32,7 @@ export interface FWFetch {
 
 export class FWClientWS {
   advancer: Advancer;
-  socket: WebSocket;
+  socket: WebSock;
 
   unsent: object[] = [];
   recvd: object[] = [];
@@ -50,8 +51,7 @@ export class FWClientWS {
   constructor(url: string) {
     this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
 
-    this.socket = new WebSocket(url);
-
+    this.socket = new WebSock(url);
     this.socket.onopen = (): void => {
       this.socketConnected = true;
       this.advancer.schedule(null);

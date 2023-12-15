@@ -1,9 +1,10 @@
 // Either wrap the built-in WebSocket or hide the delay of a dynamic import of the ws package.
 
 const wsWaiters: { (): void }[] = [];
-let ws;
+type ModuleType = typeof import('ws');
+let ws: ModuleType;
 
-if (typeof Websocket === 'undefined') {
+if (typeof WebSocket === 'undefined') {
   // We're in node; there is no WebSocket.
   import('ws').then((mod) => {
     ws = mod;
@@ -13,23 +14,23 @@ if (typeof Websocket === 'undefined') {
 
 export class WebSock {
   onopen?: { (): void };
-  onmessage?: { (Event): void };
+  onmessage?: { (event: MessageEvent): void };
   onclose?: { (): void };
-  onerror?: { (Event): void };
+  onerror?: { (event: ErrorEvent): void };
 
-  private ws: WebSocket;
+  private ws?: WebSocket;
   private closed: boolean = false;
 
   constructor(url: string) {
-    if (typeof Websocket === 'undefined') {
+    if (typeof WebSocket === 'undefined') {
       if (!ws) {
         // ws not imported yet
         wsWaiters.push(() => {
-          this.configure(new ws.WebSocket(url));
+          this.configure(new ws.WebSocket(url) as unknown as WebSocket);
         });
       } else {
         // already imported
-        this.configure(new ws.WebSocket(url));
+        this.configure(new ws.WebSocket(url) as unknown as WebSocket);
       }
     } else {
       // builtin
@@ -53,14 +54,15 @@ export class WebSock {
     ws.onopen = () => {
       if (this.onopen) this.onopen();
     };
-    ws.onmessage = (event: Event) => {
+    ws.onmessage = (event: MessageEvent) => {
       if (this.onmessage) this.onmessage(event);
     };
     ws.onclose = () => {
       if (this.onclose) this.onclose();
     };
     ws.onerror = (event: Event) => {
-      if (this.onerror) this.onerror(event);
+      // TODO how is one supposed to deal with an event instead of an ErrorEvent?
+      if (this.onerror) this.onerror(event as ErrorEvent);
     };
     if (this.closed) {
       ws.close();

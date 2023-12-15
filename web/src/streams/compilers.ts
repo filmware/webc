@@ -1,7 +1,7 @@
 import { observable, Observable, WritableObservable } from 'micro-observables';
 
 import { FWClient, FWSubscription } from './client';
-import { Advancer, isBefore, isBeforeSort, Uuid, UuidRecord } from './utils';
+import { Advancer, isBefore, isBeforeSort, RecvMsg, Uuid, UuidRecord } from './utils';
 
 export type FWComment = {
   srvId: number; // only for tie-breaker sorting
@@ -35,10 +35,11 @@ export class FWComments {
   private writable: WritableObservable<FWCommentsResult>;
   private sub: FWSubscription;
   private advancer: Advancer;
-  private recvd?: object[];
+  private recvd: RecvMsg[] = [];
   private comments: UuidRecord<FWComment> = {};
   private tops: string[] = [];
-  private unresolved: UuidRecord<object[]> = {};
+  private unresolved: UuidRecord<RecvMsg[]> = {};
+  private synced: boolean = false;
 
   private onSyncSent: boolean = false;
 
@@ -46,6 +47,7 @@ export class FWComments {
     this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
     this.sub = client.subscribe({ comments: spec });
     this.sub.onSync = (payload) => {
+      this.synced = true;
       this.recvd = payload;
       this.advancer.schedule(null);
     };
@@ -59,10 +61,12 @@ export class FWComments {
   }
 
   // returns a set of comment uuids whose child lists need resolving.
-  private processMsg(msg: object): UuidRecord<boolean> {
+  private processMsg(msg: RecvMsg): UuidRecord<boolean> {
+    let out: UuidRecord<boolean> = {};
+    if (msg.type !== 'comment') return out;
+
     const uuid = msg['comment'];
     const parent = msg['parent'];
-    let out: UuidRecord<boolean> = {};
 
     // can we resolve this message yet?
     if (parent != null && !(parent in this.comments)) {
@@ -77,7 +81,7 @@ export class FWComments {
     }
 
     const c = {
-      srvId: msg['srvId'],
+      srvId: msg['srv_id'],
       seqno: msg['seqno'],
       uuid: uuid,
       topic: msg['topic'],
@@ -165,11 +169,11 @@ export class FWComments {
 
   private advanceUp(): void {
     // wait for initial sync
-    if (!this.recvd) return;
+    if (!this.synced) return;
 
     // process recvd, and any messages which become resolvable as a result
     let reSort = {};
-    this.recvd.forEach((msg: object) => {
+    this.recvd.forEach((msg) => {
       reSort = { ...reSort, ...this.processMsg(msg) };
     });
     this.recvd = [];
@@ -207,7 +211,7 @@ export class FWComments {
     }
   }
 
-  private advanceDn(error: Error): void {
+  private advanceDn(error?: Error): void {
     // this should actually never run
     console.error('unexpected FWComments.advanceDn() error:', error);
   }
@@ -253,9 +257,10 @@ export class FWTopics {
   private writable: WritableObservable<FWTopicsResult>;
   private sub: FWSubscription;
   private advancer: Advancer;
-  private recvd?: object[];
+  private recvd: RecvMsg[] = [];
   private topics: UuidRecord<FWTopic> = {};
   private bySubmit: Uuid[] = [];
+  private synced: boolean = false;
 
   private onSyncSent: boolean = false;
 
@@ -276,12 +281,14 @@ export class FWTopics {
   }
 
   // returns true if a sort is called for
-  private processMsg(msg: object): boolean {
+  private processMsg(msg: RecvMsg): boolean {
+    if (msg.type !== 'topic') return false;
+
     const uuid = msg['topic'];
     let wantSort = false;
 
     const t = {
-      srvId: msg['srvId'],
+      srvId: msg['srv_id'],
       seqno: msg['seqno'],
       uuid: uuid,
       project: msg['project'],
@@ -337,11 +344,11 @@ export class FWTopics {
 
   private advanceUp(): void {
     // wait for initial sync
-    if (!this.recvd) return;
+    if (!this.synced) return;
 
     // process recvd, and any messages which become resolvable as a result
     let wantSort = false;
-    this.recvd.forEach((msg: object) => {
+    this.recvd.forEach((msg) => {
       wantSort = this.processMsg(msg) || wantSort;
     });
     this.recvd = [];
@@ -374,7 +381,7 @@ export class FWTopics {
     }
   }
 
-  private advanceDn(error: Error): void {
+  private advanceDn(error?: Error): void {
     // this should actually never run
     console.error('unexpected FWTopics.advanceDn() error:', error);
   }

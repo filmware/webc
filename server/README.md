@@ -325,6 +325,8 @@ Example:
     "version": "the-version-uuid",
     "topic": "the-topic-uuid",
     "user": "the-user-uuid",
+    "submissiontime": "the-submission-time",
+    "authortime": "the-author-time",
     "archivetime": [[0,99], [1,199]],
     ... other stuff tbd ...
     "links": [

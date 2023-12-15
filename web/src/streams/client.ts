@@ -1,4 +1,4 @@
-import { Advancer } from './utils';
+import { Advancer, RecvMsg, RecvMsgOrSync, SubscriptionSpec } from './utils';
 import { WebSock } from './websock';
 
 /* FWClient is the logical unit of synchronization.  It is an interface because it can be
@@ -7,7 +7,7 @@ import { WebSock } from './websock';
 export interface FWClient {
   subscribe(spec: object): FWSubscription;
   fetch(spec: object): FWFetch;
-  upload(objects: object[]): void;
+  upload(objects: object[]): FWUpload;
 }
 
 export interface FWSubscription {
@@ -15,19 +15,26 @@ export interface FWSubscription {
      return all messages in a single callback.  It is assumed onPreSyncMsg will be unset unless
      the consumer is collecting a very large amount of data and wants to process it as it arrives,
      rather than buffer everything in memory. */
-  onPreSyncMsg?: { (msg: object): void };
+  onPreSyncMsg?: { (msg: RecvMsg): void };
   /* onSync returns the whole initial payload, unless onPreSyncMsg was set, in which case it returns
      an empty list of messages. */
-  onSync?: { (payload: object[]): void };
+  onSync?: { (payload: RecvMsg[]): void };
   // onMsg returns individual messages which arrive after the sync message.
-  onMsg?: { (msg: object): void };
+  onMsg?: { (msg: RecvMsg): void };
 
   close(): void;
 }
 
 export interface FWFetch {
-  onFetch?: { (payload: object[]): void };
+  onPreSyncMsg?: { (payload: RecvMsg): void };
+  onFetch?: { (payload: RecvMsg[]): void };
   cancel(): void;
+}
+
+export interface FWUpload {
+  onFinish?: { (): void };
+  /* no cancel, because it would be ambiguous if the upload was completed or not.  So just assume it
+     was completed and prefer edits to cancelations */
 }
 
 export class FWClientWS {
@@ -35,10 +42,10 @@ export class FWClientWS {
   socket: WebSock;
 
   unsent: object[] = [];
-  recvd: object[] = [];
+  recvd: RecvMsgOrSync[] = [];
   muxId: number = 0;
-  subs: Record<number, FWSubscriptionWS> = {};
-  reqs: Record<number, FWRequestWS> = {};
+  subs: Record<number, FWSubscriptionWS | FWFetchWS> = {};
+  reqs: Record<number, FWUploadWS> = {};
 
   socketConnected: boolean = false;
   socketCloseStarted: boolean = false;
@@ -46,34 +53,41 @@ export class FWClientWS {
   wantClose: boolean = false;
 
   // callback API //
-  onClose?: { (error: Error): void };
+  onClose?: { (error?: Error): void };
+
+  // FWClientWS-specific callback
+  onConnect?: { (): void };
 
   constructor(url: string) {
     this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
 
     this.socket = new WebSock(url);
     this.socket.onopen = (): void => {
+      setTimeout(() => {
+        if (!this.wantClose) this.onConnect?.call(null);
+      });
       this.socketConnected = true;
       this.advancer.schedule(null);
     };
-    this.socket.onmessage = (e: Event): void => {
+    this.socket.onmessage = (e: MessageEvent): void => {
       const msg = JSON.parse(e.data);
       this.recvd.push(msg);
       this.advancer.schedule(null);
     };
     this.socket.onclose = (): void => {
       this.socketCloseDone = true;
-      let error = undefined;
+      let error = null;
       if (!this.wantClose) {
         error = new Error('closed early');
       }
       this.advancer.schedule(error);
     };
-    this.socket.onerror = (error: Event): void => {
+    this.socket.onerror = (event: ErrorEvent): void => {
       // discard the error if we closed the websocket ourselves
-      let keptError = undefined;
+      let keptError = null;
       if (!this.wantClose) {
-        keptError = error;
+        // XXX: not at all sure that this is the right way to extract this error.
+        keptError = event.error;
       }
       this.advancer.schedule(keptError);
     };
@@ -117,7 +131,7 @@ export class FWClientWS {
     }
   }
 
-  private advanceDn(error: Error): void {
+  private advanceDn(error?: Error): void {
     // make sure our socket is closed
     if (!this.socketCloseDone) {
       if (!this.socketCloseStarted) {
@@ -144,7 +158,7 @@ export class FWClientWS {
   }
 
   // TODO: have a real api; as-written, the user composes the whole message except mux_id and type
-  subscribe(spec: object): FWSubscription {
+  subscribe(spec: SubscriptionSpec): FWSubscription {
     // can these be const?  I don't know how that works.
     const muxId = this.getMuxID();
     const msg = {
@@ -159,28 +173,28 @@ export class FWClientWS {
     return sub;
   }
 
-  fetch(spec: object): FWFetch {
+  fetch(spec: SubscriptionSpec): FWFetch {
     const muxId = this.getMuxID();
     const msg = {
       type: 'fetch',
       mux_id: muxId,
       ...spec,
     };
-    const sub = new FWSubscriptionWS(this, muxId);
-    this.subs[muxId] = sub;
+    const f = new FWFetchWS(this, muxId);
+    this.subs[muxId] = f;
     this.unsent.push(msg);
     this.advancer.schedule(null);
-    return new FWFetchWS(sub);
+    return f;
   }
 
-  upload(objects: object[]): FWRequestWS {
+  upload(objects: object[]): FWUploadWS {
     const muxId = this.getMuxID();
     const msg = {
       type: 'upload',
       mux_id: muxId,
       objects: objects,
     };
-    const req = new FWRequestWS(this, muxId);
+    const req = new FWUploadWS(this, muxId);
     this.reqs[muxId] = req;
     this.unsent.push(msg);
     this.advancer.schedule(null);
@@ -192,7 +206,7 @@ class FWSubscriptionWS {
   client: FWClientWS;
   muxId: number;
 
-  presync: object[] = [];
+  presync: RecvMsg[] = [];
 
   synced: boolean = false;
   closed: boolean = false;
@@ -202,12 +216,12 @@ class FWSubscriptionWS {
      return all messages in a single callback.  It is assumed onPreSyncMsg will be unset unless the
      consumer is collecting a very large amount of data and wants to process it as it arrives,
      rather than buffer everything in memory. */
-  onPreSyncMsg?: { (msg: object): void };
+  onPreSyncMsg?: { (msg: RecvMsg): void };
   /* onSync returns the whole initial payload, unless onPreSyncMsg was set, in which case it returns
      an empty list of messages. */
-  onSync?: { (payload: object[]): void };
+  onSync?: { (payload: RecvMsg[]): void };
   // onMsg returns individual messages which arrive after the sync message.
-  onMsg?: { (msg: object): void };
+  onMsg?: { (msg: RecvMsg): void };
 
   constructor(client: FWClientWS, muxId: number) {
     this.client = client;
@@ -223,23 +237,23 @@ class FWSubscriptionWS {
   }
 
   // a message arrives from the client object
-  put(msg: object): void {
-    if (this.synced) {
-      // after sync, always call onMsg
-      this.healthyCallback(() => this.onMsg?.call(this, msg));
-      return;
-    }
+  put(msg: RecvMsgOrSync): void {
     if (msg.type === 'sync') {
       // this is the sync; deliver the buffered presync messages
       this.synced = true;
       const payload = this.presync;
       this.presync = [];
-      this.healthyCallback(() => this.onSync?.call(this, payload));
+      this.healthyCallback(() => this.onSync?.call(null, payload));
+      return;
+    }
+    if (this.synced) {
+      // after sync, always call onMsg
+      this.healthyCallback(() => this.onMsg?.call(null, msg));
       return;
     }
     if (this.onPreSyncMsg) {
       // before sync, client can request individual messages
-      this.healthyCallback(() => this.onPreSyncMsg?.call(this, msg));
+      this.healthyCallback(() => this.onPreSyncMsg?.call(null, msg));
       return;
     }
     // buffer presync message and keep waiting for sync
@@ -256,40 +270,65 @@ class FWSubscriptionWS {
 }
 
 class FWFetchWS {
-  // FWFetch is just a wrapper around FWSubscription
-  sub: FWSubscriptionWS;
+  client: FWClientWS;
+  muxId: number;
+  payload: RecvMsg[] = [];
+  done: boolean = false;
 
   canceled: boolean = false;
 
   // callback API //
-  onFetch?: { (payload: object[]): void };
+  onPreSyncMsg?: { (msg: RecvMsg): void };
+  onFetch?: { (payload: RecvMsg[]): void };
 
-  constructor(sub: object) {
-    this.sub = sub;
-    this.sub.onSync = (payload) => {
-      this.healthyCallback(() => this.onFetch?.call(this, payload));
-      delete this.sub.client.subs[sub.muxId];
-    };
+  constructor(client: FWClientWS, muxId: number) {
+    this.client = client;
+    this.muxId = muxId;
   }
 
   healthyCallback(func: () => void): void {
     setTimeout(() => {
-      if (!this.canceled && !this.sub.client.wantClose) {
+      if (!this.canceled && !this.client.wantClose) {
         func();
       }
     });
+  }
+
+  // a message arrives from the client object
+  put(msg: RecvMsgOrSync): void {
+    if (msg.type === 'sync') {
+      // this is the sync; deliver the buffered presync messages
+      this.done = true;
+      const payload = this.payload;
+      this.payload = [];
+      this.healthyCallback(() => this.onFetch?.call(null, payload));
+      delete this.client.subs[this.muxId];
+      return;
+    }
+    if (this.done) {
+      console.error('FWFetchWS received a message after the sync!');
+      return;
+    }
+    if (this.onPreSyncMsg) {
+      // before completed fetch, client can request individual messages
+      this.healthyCallback(() => this.onPreSyncMsg?.call(null, msg));
+      return;
+    }
+    // buffer message as part of payload
+    this.payload.push(msg);
   }
 
   // external API //
 
   /* cancel cancels the callback but does not affect the messages on the wire, since the server does
      not read messages from the client until after the sync message is sent. */
+  // TODO: write the server to support preemption messages, and fix this
   cancel(): void {
     this.canceled = true;
   }
 }
 
-class FWRequestWS {
+class FWUploadWS {
   client: FWClientWS;
   muxId: number;
   finished: boolean = false;
@@ -306,9 +345,7 @@ class FWRequestWS {
     this.finished = true;
     if (!this.onFinish) return;
     setTimeout(() => {
-      if (!this.client.wantClose) this.onFinish?.call(this);
+      if (!this.client.wantClose) this.onFinish?.call(null);
     });
   }
-
-  // no external API //
 }

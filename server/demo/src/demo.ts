@@ -1,18 +1,19 @@
 import {
   Advancer,
-  FWClientWS,
+  FWClient,
   FWSubscription,
   FWFetch,
   FWCommentsResult,
   FWComments,
   FWTopicsResult,
   FWTopics,
+  reconnectingClient,
   Uuid,
   UuidRecord,
 } from "@/streams/index";
 
 class Demo {
-    client: FWClientWS;
+    client: FWClient;
     advancer: Advancer;
 
     sub?: FWSubscription = null;
@@ -34,15 +35,23 @@ class Demo {
     topics?: FWTopicsResult = null;
 
     constructor(){
-        this.client = new FWClientWS("ws://localhost:8080/ws");
+        this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
+
+        let statusObservable;
+        [this.client, statusObservable] = reconnectingClient("ws://localhost:8080/ws");
+
         this.client.onClose = (error) => {
-            if(error === null){
+            if(!error){
                 error = "client closed unexpectedly";
             }
             this.advancer.schedule(error);
         }
 
-        this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
+        statusObservable.select(status => status.connected).subscribe(connected => {
+            this.want_render = true;
+            this.connected = connected;
+            this.advancer.schedule(null);
+        });
     }
 
     advanceUp(){
@@ -126,6 +135,7 @@ class Demo {
                 },
             ]);
             req.onFinish = () => {
+                console.log("upload done");
                 this.upload_done = true;
                 this.advancer.schedule(null);
             };
@@ -163,18 +173,22 @@ class Demo {
     }
 
     render() {
-        console.log("\x1b[2J\x1b[1;1H" + "TOPICS:")
+        let out = "";
+        out += "\x1b[2J\x1b[1;1H";
+        out += `CONNECTED: \x1b[93m${this.connected}\x1b[m\n`;
+        out += "TOPICS:\n";
         this.topics.bySubmit.map(
             (uuid) => this.topics.topics[uuid]
         ).forEach((t) => {
             const id = t.uuid.substring(0, 8);
             const when = t.submissiontime;
             const name = t.name.substring(0,40);
-            console.log(`  ${id}:${when}: ${name}`);
+            out += `  ${id}:${when}: ${name}\n`;
         });
-        console.log("");
-        console.log(`\nCOMMENTS (${this.topic}):`);
-        printComments(this.comments.comments, this.comments.topLevels, "  ");
+        out += "\n";
+        out += `\nCOMMENTS (${this.topic}):\n`;
+        out += printComments(this.comments.comments, this.comments.topLevels, "  ");
+        process.stdout.write(out);
     }
 
     advanceDn(error){
@@ -185,18 +199,16 @@ class Demo {
 
 function printComments(
     all: UuidRecord<FWComment>, uuids: Uuid[], indent: string = ""
-): void {
+): string {
+    let out = "";
     uuids.map((uuid) => all[uuid]).forEach((c) => {
         const edit = c.edittime ? "*" : "";
         const id = c.uuid.substring(0, 8);
         const text = c.body.substring(0, 40);
-        console.log(`${indent}${id}: ${edit}${text}`);
-        printComments(all, c.children, indent + "  ");
+        out += `${indent}${id}: ${edit}${text}\n`;
+        out += printComments(all, c.children, indent + "  ");
     });
-    uuids.forEach((uuid) => {
-        const c = all[uuid];
-        // edits are flagged as "*"
-    });
+    return out;
 }
 
 let demo = new Demo();

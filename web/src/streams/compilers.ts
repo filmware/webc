@@ -268,6 +268,7 @@ export class FWTopics {
     this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
     this.sub = client.subscribe({ topics: spec });
     this.sub.onSync = (payload) => {
+      this.synced = true;
       this.recvd = payload;
       this.advancer.schedule(null);
     };

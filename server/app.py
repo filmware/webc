@@ -198,7 +198,7 @@ class SubscriptionSpec:
         args = []
         for s in self.since:
             assert len(s) == 2, s
-            clauses.append(a(f"(not (srv_id = ? and seqno < ?))"))
+            clauses.append(a(f"(not (srv_id = ? and seqno <= ?))"))
             args.extend(s)
 
         if self.value is not None:

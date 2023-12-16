@@ -86,7 +86,6 @@ export class FWClientWS {
       // discard the error if we closed the websocket ourselves
       let keptError = null;
       if (!this.wantClose) {
-        // XXX: not at all sure that this is the right way to extract this error.
         keptError = event.error;
       }
       this.advancer.schedule(keptError);

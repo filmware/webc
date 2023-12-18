@@ -33,8 +33,14 @@
 
 Protocol Summary:
 
-- The client shall begin by sending a `type:subscribe` message, with a
-  client-chosen `mux_id` that the server shall attach to all of its responses.
+- The protocol beings as synchronous.  The client shall send begin by sending
+  an authorization attempt of `type:password` or `type:session`.  The server
+  shall respond with a `type:result` message.  If the `success` field is
+  `true`, then the client is logged in and the protocol switches to
+  asynchronous behavior.
+
+- The client shall send a `type:subscribe` message, with a client-chosen
+  `mux_id` that the server shall attach to all of its responses.
 
 - The server shall send an initial payload of matching messages currently in
   the database.
@@ -50,6 +56,36 @@ Protocol Summary:
   that subscription, as some responses may already be in-flight.
 
 ### Client Messages
+
+#### `type:password`
+
+A client logs in with a password.  Password is base64-encoded bytes.
+The server shall respond with a `type:result` message.
+
+Example:
+
+```
+{
+    "type": "password",
+    "email": "joebob@filmware.io",
+    "password": "cGFzc3dvcmQ="
+}
+```
+
+#### `type:session`
+
+A client re-authenticates with an existing session.  Token is base64-encoded
+bytes.  The server shall respond with a `type:result` message.
+
+Example:
+
+```
+{
+    "type": "password",
+    "session": "the-session-uuid",
+    "token": "NcjzNc0Ex0FiGQHsyITT8spL99GLn0NcbslfTIPBlSM="
+}
+```
 
 #### `type:subscribe`
 
@@ -213,6 +249,32 @@ Example `type:newtopic` object:
 ```
 
 ### Server Messages
+
+#### `type:result`
+
+A server responds to a `type:password` or `type:session` authentication
+attempt.
+
+Example, failure case:
+
+```
+{
+    "type": "result",
+    "success": false
+}
+```
+
+Example, success case:
+
+```
+{
+    "type": "result",
+    "success": true,
+    "session": "the-session-uuid",
+    "token": "NcjzNc0Ex0FiGQHsyITT8spL99GLn0NcbslfTIPBlSM=",
+    "expiry": "2022-01-01T17:05:00Z"
+}
+```
 
 #### `type:sync`
 

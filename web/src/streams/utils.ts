@@ -6,6 +6,20 @@ export type RecvSync = {
   mux_id: number;
 };
 
+export type RecvSuccess = {
+  type: 'result';
+  success: true;
+  user: Uuid;
+  session: string;
+  token: string;
+  expirty: Date;
+};
+
+export type RecvFailure = {
+  type: 'result';
+  success: false;
+};
+
 type RecvMsgCommon = {
   srv_id: number;
   seqno: number;
@@ -41,6 +55,7 @@ export type RecvTopic = RecvMsgCommon & {
 
 export type RecvMsg = RecvComment | RecvTopic;
 export type RecvMsgOrSync = RecvMsg | RecvSync;
+export type RecvMsgAll = RecvMsgOrSync | RecvSuccess | RecvFailure;
 
 export type SubscriptionSince = number[][];
 

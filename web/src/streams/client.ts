@@ -1,4 +1,4 @@
-import { Advancer, RecvMsg, RecvMsgOrSync, SubscriptionSpec } from './utils';
+import { Advancer, RecvMsg, RecvMsgAll, RecvMsgOrSync, SubscriptionSpec } from './utils';
 import { WebSock } from './websock';
 
 /* FWClient is the logical unit of synchronization.  It is an interface because it can be
@@ -37,17 +37,24 @@ export interface FWUpload {
      was completed and prefer edits to cancelations */
 }
 
+export function tob64(s: string): string {
+  // from https://developer.mozilla.org/en-US/docs/Glossary/Base64#the_unicode_problem
+  return btoa(String.fromCodePoint(...new TextEncoder().encode(s)));
+}
+
 export class FWClientWS {
   advancer: Advancer;
   socket: WebSock;
 
   unsent: object[] = [];
-  recvd: RecvMsgOrSync[] = [];
+  recvd: RecvMsgAll[] = [];
   muxId: number = 0;
   subs: Record<number, FWSubscriptionWS | FWFetchWS> = {};
   reqs: Record<number, FWUploadWS> = {};
 
   socketConnected: boolean = false;
+  loggedIn: boolean = false;
+  loginSent: boolean = false;
   socketCloseStarted: boolean = false;
   socketCloseDone: boolean = false;
   wantClose: boolean = false;
@@ -103,9 +110,37 @@ export class FWClientWS {
       return;
     }
 
+    if (!this.loggedIn) {
+      // auto-login for now, while we figure out the server
+      if (!this.loginSent) {
+        this.loginSent = true;
+        this.socket.send(
+          JSON.stringify({
+            type: 'password',
+            email: 'praj.ectowner@filmware.io',
+            password: tob64('password'),
+          }),
+        );
+      }
+      // wait for a result
+      const msg = this.recvd.shift();
+      if (!msg) return;
+      if (msg.type !== 'result') {
+        // TODO: if this fires, we get some weird looping.  Probably a bug in Advancer.
+        throw new Error(`expected type:result message but got type:${msg.type}`);
+      }
+      if (!msg.success) {
+        throw new Error('autologin failed');
+      }
+      this.loggedIn = true;
+    }
+
     // hand out recvd messages
     let msg;
     while ((msg = this.recvd.shift())) {
+      if (msg.type === 'result') {
+        throw new Error('unexpected type:result message after login complete');
+      }
       // find the matching subscription
       const sub = this.subs[msg.mux_id];
       if (sub !== undefined) {

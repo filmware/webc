@@ -17,7 +17,7 @@ import asyncpg
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("fake")
 
-USER = "0fe07a2c-59d1-4f65-a8a8-e0b4269c32ef"
+OWNER = "0fe07a2c-59d1-4f65-a8a8-e0b4269c32ef"
 PROJ = "aeb2c3f0-a645-44a9-b6f6-9cb7152c0163"
 PROJ_VERSION = "45d56af6-5403-4736-9b3c-04a08fa68c9a"
 
@@ -58,7 +58,14 @@ def ri(a, b):
     return random.randint(a, b)
 
 
+async def random_user(conn):
+    all_users = [r["user"] for r in await conn.fetch('select "user" from users')]
+    return random.choice(all_users)
+
+
+
 async def fake_report(conn):
+    user = await random_user(conn)
     # Create a fake report.
     report = uuid.uuid4()
     for i in range(ri(5, 25)):
@@ -83,7 +90,7 @@ async def fake_report(conn):
             ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
             PROJ,
-            USER,
+            user,
             report,
             entry,
             version,
@@ -99,6 +106,7 @@ def unmodified_versions(entry):
 
 
 async def fake_edit(conn):
+    user = await random_user(conn)
     # Create a fake edit in every existing report.
     all_reports = [
         r["report"] for r in await conn.fetch(
@@ -151,7 +159,7 @@ async def fake_edit(conn):
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     """,
                     PROJ,
-                    USER,
+                    user,
                     report,
                     entry_uuid,
                     version,
@@ -193,7 +201,7 @@ async def fake_edit(conn):
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     """,
                     PROJ,
-                    USER,
+                    user,
                     report,
                     entry_uuid,
                     version,
@@ -230,7 +238,7 @@ async def fake_edit(conn):
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 """,
                 PROJ,
-                USER,
+                user,
                 report,
                 entry_uuid,
                 version,
@@ -241,6 +249,7 @@ async def fake_edit(conn):
 
 
 async def fake_topic(conn):
+    user = await random_user(conn)
     mode = ri(1,2)
     if mode == 1:
         # Modify an existing topic.
@@ -284,7 +293,7 @@ async def fake_topic(conn):
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         """,
         PROJ,
-        USER,
+        user,
         version,
         topic,
         name,
@@ -294,6 +303,7 @@ async def fake_topic(conn):
     )
 
 async def fake_comment(conn):
+    user = await random_user(conn)
     # Create a comment in every existing topic.
     all_topics = [
         r["topic"] for r in await conn.fetch(
@@ -347,7 +357,7 @@ async def fake_comment(conn):
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             """,
             PROJ,
-            USER,
+            user,
             topic,
             version,
             comment,
@@ -357,8 +367,92 @@ async def fake_comment(conn):
             datetime.datetime.now(),
         )
 
+async def fake_user(conn, user=None, firstname=None, lastname=None, kind="member"):
+    names = [
+        "Matthew", "Mark", "Luke", "John", "Paul", "Michael", "Gabriel", "Abraham", "Adam",
+        "Isaac", "Levi", "Judah", "Joshua", "Moses", "Joseph", "Timothy", "Daniel", "Job",
+    ]
+    firstname = firstname or random.choice(names)
+    lastname = lastname or random.choice(names) + "son"
+
+    version = user or uuid.uuid4()
+    account = user or uuid.uuid4()
+    user = user or uuid.uuid4()
+
+    # create an account
+    await conn.fetch(
+        f"""
+        insert into accounts (
+            version,
+            account,
+            "user",
+            name,
+            email,
+            password,
+            submissiontime,
+            authortime
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        on conflict (version) do nothing
+        """,
+        version,
+        account,
+        user,
+        f"{firstname} {lastname}",
+        f"{firstname}.{lastname}@filmware.io".lower(),
+        # password is always "password"
+        "$argon2id$v=19$m=65536,t=3,"
+        "p=4$G3xG3i0g1GIVmQG81YDpcA$Lh6QE93dh7iOvm3o9OtA9g+m2ZBmUekx1VL7GLkdr5o",
+        datetime.datetime.now(),
+        datetime.datetime.now(),
+    )
+
+    # create a user for that account
+    await conn.fetch(
+        f"""
+        insert into users (
+            version,
+            "user",
+            account,
+            submissiontime,
+            authortime
+        ) VALUES ($1, $2, $3, $4, $5)
+        on conflict (version) do nothing
+        """,
+        version,
+        user,
+        account,
+        datetime.datetime.now(),
+        datetime.datetime.now(),
+    )
+
+    # and create a permission for the user
+    await conn.fetch(
+        f"""
+        insert into permissions (
+            version,
+            "user",
+            project,
+            kind,
+            enable,
+            author,
+            submissiontime,
+            authortime
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        on conflict (version) do nothing
+        """,
+        version,
+        user,
+        PROJ,
+        kind,
+        True,  # enabled
+        OWNER,  # author
+        datetime.datetime.now(),
+        datetime.datetime.now(),
+    )
+
 
 async def make_project(conn):
+    # create a project
     await conn.fetch(
         f"""
         insert into projects (
@@ -374,10 +468,13 @@ async def make_project(conn):
         PROJ_VERSION,
         PROJ,
         "Avengers: Overkill",
-        USER,
+        OWNER,
         datetime.datetime.now(),
         datetime.datetime.now(),
     )
+
+    # create an owner
+    await fake_user(conn, OWNER, "Praj", "Ectowner", "admin")
 
 
 async def main(args):
@@ -389,6 +486,7 @@ async def main(args):
         "e": fake_edit,
         "t": fake_topic,
         "c": fake_comment,
+        "u": fake_user,
     }
     try:
         await make_project(conn)
@@ -411,6 +509,7 @@ if __name__ == "__main__":
                 e   insert an edit into every report
                 t   insert a topic
                 c   insert a comment into every topic
+                u   insert a user
             """).strip(),
             file=sys.stderr,
         )

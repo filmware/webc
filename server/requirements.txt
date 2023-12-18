@@ -1,2 +1,3 @@
 aiohttp
 asyncpg
+argon2-cffi

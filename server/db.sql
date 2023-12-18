@@ -19,6 +19,43 @@ create table if not exists projects (
 );
 create index if not exists projects_project_idx on projects (project);
 
+-- Users:
+-- - a User is really just a UUID for tagging what a human does in the system
+-- - e.g. every comment has a "User" UUID
+-- - a User does not have a name or a password
+-- - a User does have a mutable Account UUID it is linked to
+-- - multiple users may link to one Account, if accounts have been merged
+--
+-- Accounts:
+-- - an Account has email, password, display name, etc
+-- - an Account has a primary User uuid to tag objects uploaded by a session
+-- - e.g. which "User" is the author of a comment uploaded after logging in
+-- - the User of an Account is immutable even after a merge
+-- - every merge orphans one Account
+--
+-- Permissions:
+-- - Permissions are assigned to Users
+-- - merging accounts does not affect Permissions table
+-- - Account Permissions are the union of Permissions for Users for an Account
+--
+-- Session:
+-- - a session represents a login
+-- - a session is tied to accounts, not to users
+-- - multiple sessions may link to one Account
+--
+-- How do invitations work:
+-- - a Session for an Account with invite Permission invites an email address
+-- - an Account, a User, and a Permission are created immediately
+-- - initial Account password is empty
+-- - the magic link in the email contains the email address and the session
+-- - if the user clicks fast enough, they start logged in into the session
+-- - else they are instructed to use OTP or reset password
+--
+-- How does login work:
+-- - log in via email address + password
+-- - log in via existing Session
+-- - if the Account has no password, they can send OTP or reset password
+
 -- users can participate in multiple projects
 create sequence if not exists users_seq as int8 start 1;
 create table if not exists users (
@@ -26,9 +63,7 @@ create table if not exists users (
     seqno int8 not null default nextval('users_seq'),
     version uuid unique,
     "user" uuid not null,
-    name varchar(64) not null unique,
-    email varchar(128) not null,
-    password varchar(128) not null,
+    account uuid not null,
     submissiontime timestamptz not null,
     authortime timestamptz not null,
     archivetime jsonb,
@@ -36,6 +71,49 @@ create table if not exists users (
     constraint users_seq_uniq unique (srv_id, seqno)
 );
 create index if not exists users_user_idx on users ("user");
+
+-- users map to accounts, but not 1-to-1 due to possible merging
+create sequence if not exists accounts_seq as int8 start 1;
+create table if not exists accounts (
+    srv_id int not null default 1,
+    seqno int8 not null default nextval('accounts_seq'),
+    version uuid unique,
+    account uuid not null,
+    -- the default user uuid for objects uploaded by a session for this account
+    "user" uuid not null,
+    name varchar(64),
+    -- TODO: email needs to be unique, since it's used for login, but it is an
+    --       archive table, so that presents some challenges.
+    --       Maybe this is like the thread-id thing, where email should be the
+    --       primary key.  Or maybe email invites should be a separate table
+    --       and the presence of multiple invites to the same email address
+    --       should all be resolved at the same time?
+    email varchar(128),
+    password varchar(128),
+    submissiontime timestamptz not null,
+    authortime timestamptz not null,
+    archivetime jsonb,
+
+    constraint accounts_seq_uniq unique (srv_id, seqno)
+);
+create index if not exists accounts_account_idx on accounts (account);
+
+-- sessions is not an archive table; it is mutable
+--   - replication is server-to-server only
+--   - deletions are automatic per server, only replicate inserts and updates
+--   - sessions are invalidated by updating srv_id,seqno and setting valid=0
+create sequence if not exists sessions_seq as int8 start 1;
+create table if not exists sessions (
+    srv_id int not null default 1,
+    seqno int8 not null default nextval('sessions_seq'),
+    "session" uuid primary key,
+    token bit(256) not null,
+    account uuid null,
+    expiry timestamptz not null,
+    valid boolean not null default true,
+
+    constraint sessions_seq_uniq unique (srv_id, seqno)
+);
 
 -- permissions ties users to projects
 create type permission_kind as enum (
@@ -64,7 +142,7 @@ create table if not exists permissions (
     authortime timestamptz not null,
     archivetime jsonb,
 
-    constraint prems_seq_uniq unique (srv_id, seqno)
+    constraint perms_seq_uniq unique (srv_id, seqno)
 );
 create index if not exists permissions_user_idx on permissions ("user");
 create index if not exists permissions_project_idx on permissions (project);

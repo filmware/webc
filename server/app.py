@@ -6,15 +6,17 @@ import logging
 import sys
 import uuid
 import datetime
+import secrets
+import base64
 
 import asyncpg
 from aiohttp import web
+import argon2
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("app")
 
-# pretend we have an auth system
-USER = "0fe07a2c-59d1-4f65-a8a8-e0b4269c32ef"
+ph = argon2.PasswordHasher()
 
 def tojson(obj, indent=None):
 
@@ -109,25 +111,98 @@ async def waitgroup(*coros):
 #### begin server ####
 
 
+def pgify(func):
+    async def decorated(*args, **kwargs):
+        conn = await asyncpg.connect(host="/tmp/filmware", database="filmware")
+        try:
+            return await func(conn, *args, **kwargs)
+        finally:
+            await conn.close()
+
+    return decorated
+
+
 class Listener:
-    def __init__(self):
+    def __init__(self, conn):
+        self.conn = conn
+        self.session = None
+        self.account = None
+        self.allusers = None
+        self.allprojects = None
+
         self.subs = set()
-        self.conn = None
+        self.configured = False
+        self.preconfigure = []
+        self.bootq = asyncio.Queue()
+        self.booted = False
+
+    # start must complete before subscriptions may be added
+    async def start(self):
+        await self.conn.add_listener('stream', self.on_notify)
+
+    def configure(self, session, account, allusers, allprojects):
+        self.session = session
+        self.account = account
+        self.allusers = allusers
+        self.allprojects = allprojects
+        self.configured = True
+        # process any notifications we had earlier
+        for obj in self.preconfigure:
+            reason = self.check_bootem(obj)
+            if reason:
+                raise ValueError(f"booting: {boot_reason}")
+        self.preconfigure = []
 
     async def run(self):
-        self.conn = await asyncpg.connect(
-            host="/tmp/filmware", database="filmware"
-        )
-        try:
-            await self.conn.add_listener('stream', self.on_notify)
-            # run forever
-            await asyncio.sleep(sys.maxsize)
-        finally:
-            await self.conn.close()
+        # wait for a justbootem signal
+        boot_reason = await self.bootq.get()
+        raise ValueError(f"booting: {boot_reason}")
+
+    def check_bootem(self, obj):
+        typ = obj["type"]
+        if typ == "user":
+            account = obj["account"]
+            user = obj["user"]
+            if account == self.account and user not in self.allusers:
+                return "a new user was added to the account"
+            if user in self.allusers and account != self.account:
+                return "a user was removed from this account"
+        if typ == "permission":
+            enable = obj["enable"]
+            user = obj["user"]
+            project = obj["project"]
+            if enable and user in self.allusers and project not in self.allprojects:
+                return "a permission was added to this account"
+            if not enable and project in self.allprojects:
+                return "a permission was removed from this account"
+        if typ == "session":
+            if obj["session"] == this.session and not obj["valid"]:
+                return "this session was invalidated"
+        return None
 
     def on_notify(self, conn, pid, channel, payload):
         # synchronous!
+        if self.booted:
+            return
         obj = json.loads(payload)
+        typ = obj["type"]
+        if not self.configured:
+            if typ in ["user", "permission", "session"]:
+                # we don't know what the bootem conditions are yet, so we'll check this later
+                self.preconfigure.append(obj)
+            return
+        # detect just-bootem situations
+        boot_reason = self.check_bootem(obj)
+        if boot_reason:
+            self.booted = True
+            self.bootq.put_nowait(boot_reason)
+            return
+        # apply basic permissions
+        typ = obj["type"]
+        if typ in ["entry", "topic", "comment"]:
+            if obj["project"] not in self.allprojects:
+                return
+        # broadcast to our subscribers
         for sub in self.subs:
             sub.put(obj)
 
@@ -499,10 +574,11 @@ class UserError(Exception):
 
 
 class Reader:
-    def __init__(self, ws, l, w):
+    def __init__(self, ws, l, w, user):
         self.ws = ws
         self.l = l
         self.w = w
+        self.user = user
         # map mux_id to subscriber
         self.subs = {}
 
@@ -572,7 +648,7 @@ class Reader:
                             obj.get("body"),
                             readdatetime(obj["authortime"]),
                             obj["archivetime"],
-                            USER,
+                            self.user,
                             datetime_now(),
                         )
                 if typed["newentry"]:
@@ -595,7 +671,7 @@ class Reader:
                     for obj in typed["newentry"]:
                         await stmt.fetch(
                             obj["project"],
-                            USER,
+                            self.user,
                             obj["version"],
                             obj["report"],
                             obj["entry"],
@@ -624,7 +700,7 @@ class Reader:
                     for obj in typed["newtopic"]:
                         await stmt.fetch(
                             obj["project"],
-                            USER,
+                            self.user,
                             obj["version"],
                             obj["topic"],
                             obj["name"],
@@ -641,20 +717,156 @@ class Reader:
 
 route = web.RouteTableDef()
 
+async def authenticate(conn, msg):
+    typ = msg["type"]
+
+    if typ == "password":
+        email = msg["email"]
+        password = base64.b64decode(msg["password"])
+        results = await conn.fetch("select account, password from accounts where email = $1", email)
+        if len(results) != 1:
+            # do a dummy hash anyway to avoid leaking obvious timing information
+            # TODO: collect stats on timecost distribution of hash and delay a random time that
+            # looks like a hash, rather than wasting compute
+            fakehash = (
+                "$argon2id$v=19$m=65536,t=3,"
+                "p=4$072ULEKysbQvmVGCXAdLcw$k4ZOCFLo4bBWdCIDb7edu8nmUT7MjrblYVYGql2vMqc"
+            )
+            ph.verify(fakehash, password)
+            return False
+        # TODO: do hashing off-thread to not stop the whole application for 50ms!
+        if not ph.verify(results[0]["password"], password):
+            return False
+        # mint a new session
+        account = results[0]["account"]
+        session = uuid.uuid4()
+        token = secrets.token_bytes(32)
+        expiry = datetime_now() + datetime.timedelta(days=7)
+        await conn.fetch(
+            f"""
+            insert into sessions (
+                "session",
+                token,
+                account,
+                expiry
+            ) VALUES ($1, $2, $3, $4)
+            """,
+            session,
+            token,
+            account,
+            expiry,
+        )
+        return account, session, token, expiry
+
+    elif typ == "session":
+        session = msg["session"]
+        token = base64.b64decode(msg["token"])
+        results = await conn.fetch(
+            "select account, expiry where session = $1 and token = $2 and valid = true",
+            session,
+            token,
+        )
+        if not results:
+            return False
+        # RACE: this session might have been invalidated already
+        return results[0]["account"], session, token, results[0]["expiry"]
+
+    else:
+        raise ValueError(f"unknown authentication message type {typ}")
+
+
 @route.get("/ws")
-async def ws_handler(request):
+@pgify
+async def ws_handler(conn, request):
     try:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
-        # Listener to listen for notifications from postgres
-        l = Listener()
+        # wait for successful authentication
+        while True:
+            result = await authenticate(conn, await ws.receive_json())
+            if result:
+                break
+            await ws.send_str(tojson({"type": "result", "success": False}))
+        account, session, token, expiry = result
+
+        # Start our Listener now, which will be responsible for detect just-bootem situations.
+        l = Listener(conn)
+        await l.start()
+
+        # explicitly verify that session is still valid (now that we have started our subscription)
+        results = await conn.fetch('select valid from sessions where "session" = $1', session)
+        if not results or not results[0]["valid"]:
+            raise ValueError("booting: this session was invalidated")
+
+        # find the primary user for this account
+        # (race-free; this is an immutable property of the account)
+        results = await conn.fetch('select "user" from accounts where account = $1', account)
+        if len(results) == 0:
+            raise ValueError("partial replication error")
+        user = results[0]["user"]
+
+        # find all users belonging to this account
+        results = await conn.fetch('select "user" from users where account = $1', account)
+        allusers = set(r["user"] for r in results)
+        if user not in allusers:
+            # TODO: this is a permanent error
+            raise ValueError("account has been invalidated by a merge")
+
+        # find all projects this account has permissions on
+        user_argstr = ", ".join(f"${n+1}" for n in range(len(allusers)))
+        results = await conn.fetch(
+            f"""
+            select
+                project, enable
+            from permissions
+            where "user" in ({user_argstr})
+            order by submissiontime asc
+            """,
+            *allusers
+        )
+        allprojects = set()
+        for project, enable in results:
+            if enable:
+                allprojects.add(str(project))
+            else:
+                try:
+                    allprojects.remove(str(project))
+                except KeyError:
+                    pass
+
+        await ws.send_str(
+            tojson(
+                {
+                    "type": "result",
+                    "success": True,
+                    "user": user,
+                    "session": session,
+                    "token": base64.b64encode(token).decode("utf8"),
+                    "expiry": expiry,
+                }
+            )
+        )
+
+        # TODO: I'd rather we kept an in-memory cache of login data, or that everything after
+        # password validation ran in a single transaction, because I'd feel much more confident that
+        # we avoided all race conditions that way.
+        l.configure(session, account, allusers, allprojects)
+
         # Writer to write results to the websocket
         w = Writer(ws)
         # Reader to read and process messages from the client
-        r = Reader(ws, l, w)
+        r = Reader(ws, l, w, user)
 
-        await waitgroup(l.run(), w.run(), r.run())
+        # don't outlive our session expiry
+        async def expire():
+            delay = (expiry - datetime_now()).total_seconds()
+            if delay <= 0:
+                raise ValueError("session expired")
+            await asyncio.sleep(delay)
+            raise ValueError("session expired")
+
+        await waitgroup(l.run(), w.run(), r.run(), expire())
 
         return ws
     except ConnectionResetError:

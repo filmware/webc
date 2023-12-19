@@ -1,122 +1,23 @@
-// It may be the case that this could be simplified by having the FWClientWS do auto-reconnect.
-
-import { observable, Observable, WritableObservable } from 'micro-observables';
-
-import { FWClient, FWClientWS, FWFetch, FWSubscription, FWUpload } from './client';
-import { Advancer, RecvMsg, SubscriptionSpec } from './utils';
-
-export enum ConnectionState {
-  Connected,
-  Connecting,
-  Backoff,
-}
-
-// ConnectionStatus is meant to be fed into an observable or something.w
-export type ConnectionStatus = {
-  connected: boolean;
-  state: ConnectionState;
-  // a string representation of the error causing the broken connection
-  reason: string;
-};
-
-export function reconnectingClient(url: string): [FWClient, Observable<ConnectionStatus>] {
-  const recon = new FWClientRecon(url);
-  return [recon, recon.status.readOnly()];
-}
+import { FWClient, FWFetch, FWSubscription, FWUpload } from './client';
+import { RecvMsg, SubscriptionSpec } from './utils';
 
 // implements the FWClient interface
 export class FWClientRecon {
-  advancer: Advancer;
-  private ws?: FWClientWS;
-  private url: string;
-  private backoffUntil: number = 0;
+  private ws?: FWClient;
+
+  closed: boolean = false;
 
   subs: FWSubscriptionRecon[] = [];
   fetches: FWFetchRecon[] = [];
   uploads: FWUploadRecon[] = [];
 
-  status: WritableObservable<ConnectionStatus>;
-
-  // callback api //
-
-  // only fatal errors are emitted; connection errors are always just retried.
-  // (presently there are not fatal errors... but there could be...)
-  onClose?: { (error?: Error): void };
-
-  connect(): void {
-    const ws = new FWClientWS(this.url);
+  connect(ws: FWClient): void {
     this.ws = ws;
-
-    const oldReason = this.status.get().reason;
-    this.status.set({
-      connected: false,
-      state: ConnectionState.Connecting,
-      // don't change the reason; that is still based on the last failure
-      reason: oldReason,
-    });
-
-    ws.onConnect = () =>
-      this.status.set({
-        connected: true,
-        state: ConnectionState.Connected,
-        reason: '',
-      });
 
     // resubmit each of our subscriptions, fetches, and uploads
     this.subs.forEach((s) => s.send(ws));
     this.fetches.forEach((f) => f.send(ws));
     this.uploads.forEach((u) => u.send(ws));
-
-    ws.onClose = (error) => {
-      delete this.ws;
-
-      // did we intend to close?
-      if (this.advancer.doneUp) return;
-
-      // socket errors are status updates for us
-      this.status.set({
-        connected: false,
-        state: ConnectionState.Backoff,
-        reason: `${error}`,
-      });
-      // configure the backoff timer
-      const now = Date.now();
-      const backoff = 1 * 1000;
-      this.backoffUntil = now + backoff;
-      // wake ourselves up when it's time
-      setTimeout(() => this.advancer.schedule(null), backoff);
-    };
-  }
-
-  constructor(url: string) {
-    this.url = url;
-    this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
-    this.status = observable({
-      connected: false,
-      state: ConnectionState.Connecting,
-      reason: 'initial startup',
-    });
-    this.connect();
-  }
-
-  private advanceUp(): void {
-    // do we have a connection?
-    if (!this.ws) {
-      // wait for backoff period...
-      if (Date.now() < this.backoffUntil) return;
-      // ... then create one
-      this.connect();
-    }
-  }
-
-  private advanceDn(error?: Error): void {
-    if (this.ws) {
-      this.ws.close();
-      return;
-    }
-
-    this.advancer.doneDn = true;
-    setTimeout(() => this.onClose?.call(null, error));
   }
 
   subscribe(spec: object): FWSubscription {
@@ -138,11 +39,6 @@ export class FWClientRecon {
     this.uploads.push(u);
     if (this.ws) u.send(this.ws);
     return u;
-  }
-
-  close(): void {
-    this.advancer.doneUp = true;
-    this.advancer.schedule(null);
   }
 }
 
@@ -244,7 +140,7 @@ class FWSubscriptionRecon {
 
   private healthyCallback(func: () => void): void {
     setTimeout(() => {
-      if (!this.closed && this.recon.advancer.alive()) {
+      if (!this.closed && !this.recon.closed) {
         func();
       }
     });
@@ -309,7 +205,7 @@ class FWFetchRecon {
 
   private healthyCallback(func: () => void): void {
     setTimeout(() => {
-      if (!this.closed && this.recon.advancer.alive()) {
+      if (!this.closed && !this.recon.closed) {
         func();
       }
     });
@@ -356,7 +252,7 @@ class FWUploadRecon {
 
   private healthyCallback(func: () => void): void {
     setTimeout(() => {
-      if (this.recon.advancer.alive()) {
+      if (!this.recon.closed) {
         func();
       }
     });

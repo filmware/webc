@@ -7,22 +7,26 @@ import {
   FWComments,
   FWTopicsResult,
   FWTopics,
-  reconnectingClient,
+  FWConnection,
+  FWConnectionWS,
   Uuid,
   UuidRecord,
 } from "@/streams/index";
 
 class Demo {
-    client: FWClient;
+    conn: FWConnection;
+    client?: FWClient;
     advancer: Advancer;
 
     sub?: FWSubscription = null;
 
     // state
+    connected: boolean = false;
     project?: string = null;
     topic?: string = null;
     report?: string = null;
 
+    logging_in: boolean = false;
     finding_project: boolean = false;
     finding_topic: boolean = false;
     finding_report: boolean = false;
@@ -37,17 +41,9 @@ class Demo {
     constructor(){
         this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
 
-        let statusObservable;
-        [this.client, statusObservable] = reconnectingClient("ws://localhost:8080/ws");
+        this.conn = new FWConnectionWS("ws://localhost:8080/ws");
 
-        this.client.onClose = (error) => {
-            if(!error){
-                error = "client closed unexpectedly";
-            }
-            this.advancer.schedule(error);
-        }
-
-        statusObservable.select(status => status.connected).subscribe(connected => {
+        this.conn.status.select(status => status.connected).subscribe(connected => {
             this.want_render = true;
             this.connected = connected;
             this.advancer.schedule(null);
@@ -55,6 +51,18 @@ class Demo {
     }
 
     advanceUp(){
+        // first log in
+        if(!this.client){
+            if(!this.logging_in){
+              this.logging_in = true;
+              this.conn.login("praj.ectowner@filmware.io", "password").then(
+                (client) => { this.client = client; this.advancer.schedule(null); }
+              ).catch(
+                (error) => { this.advancer.schedule(error); }
+              )
+            }
+            return;
+        }
         // find a valid project
         if(!this.finding_project){
             this.finding_project = true;

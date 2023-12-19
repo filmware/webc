@@ -762,7 +762,13 @@ async def authenticate(conn, msg):
         session = msg["session"]
         token = base64.b64decode(msg["token"])
         results = await conn.fetch(
-            "select account, expiry where session = $1 and token = $2 and valid = true",
+            """
+            select
+                account,
+                expiry
+            from sessions
+            where session = $1 and token = $2 and valid = true
+            """,
             session,
             token,
         )
@@ -784,7 +790,8 @@ async def ws_handler(conn, request):
 
         # wait for successful authentication
         while True:
-            result = await authenticate(conn, await ws.receive_json())
+            msg = await ws.receive_json()
+            result = await authenticate(conn, msg)
             if result:
                 break
             await ws.send_str(tojson({"type": "result", "success": False}))

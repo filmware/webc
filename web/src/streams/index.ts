@@ -7,7 +7,7 @@ import {
   FWTopics,
   FWTopicsResult,
 } from './compilers';
-import { ConnectionState, ConnectionStatus, reconnectingClient } from './reconnect';
+import { ConnectionState, ConnectionStatus, FWConnection, FWConnectionWS } from './conn';
 import { Advancer, isBefore, isBeforeSort, Uuid, UuidRecord } from './utils';
 
 export type {
@@ -23,9 +23,10 @@ export type {
   FWCommentsResult,
   FWTopic,
   FWTopicsResult,
-  // reconnect
+  // conn
   ConnectionState,
   ConnectionStatus,
+  FWConnection,
 };
 
 export {
@@ -38,6 +39,6 @@ export {
   // compilers
   FWComments,
   FWTopics,
-  // reconnect
-  reconnectingClient,
+  // conn
+  FWConnectionWS,
 };

@@ -113,10 +113,6 @@ export class Advancer {
     this.advanceDn = advanceDn.bind(thisArg);
   }
 
-  alive(): boolean {
-    return !this.doneUp && !this.error;
-  }
-
   schedule(error: Error | null = null) {
     if (error && !this.error) {
       this.error = error;
@@ -147,4 +143,38 @@ export class Advancer {
       this.advanceDn(this.error);
     }
   }
+}
+
+export class AdvancerNoFail {
+  protected scheduled: boolean = false;
+  protected advance: advanceUpFn;
+
+  done: boolean = false;
+
+  constructor(thisArg: unknown, advance: advanceUpFn) {
+    this.advance = advance.bind(thisArg);
+  }
+
+  schedule(): void {
+    if (!this.done && !this.scheduled) {
+      setTimeout(() => {
+        this.advanceState();
+      });
+      this.scheduled = true;
+    }
+  }
+
+  protected advanceState(): void {
+    this.scheduled = false;
+    if (this.done) {
+      // late wakeups are ignored
+      return;
+    }
+    this.advance();
+  }
+}
+
+export function tob64(s: string): string {
+  // from https://developer.mozilla.org/en-US/docs/Glossary/Base64#the_unicode_problem
+  return btoa(String.fromCodePoint(...new TextEncoder().encode(s)));
 }

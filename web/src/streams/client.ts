@@ -1,4 +1,4 @@
-import { Advancer, RecvMsg, RecvMsgAll, RecvMsgOrSync, SubscriptionSpec } from './utils';
+import { AdvancerNoFail, RecvMsg, RecvMsgAll, RecvMsgOrSync, SubscriptionSpec } from './utils';
 import { WebSock } from './websock';
 
 /* FWClient is the logical unit of synchronization.  It is an interface because it can be
@@ -37,14 +37,82 @@ export interface FWUpload {
      was completed and prefer edits to cancelations */
 }
 
-export function tob64(s: string): string {
-  // from https://developer.mozilla.org/en-US/docs/Glossary/Base64#the_unicode_problem
-  return btoa(String.fromCodePoint(...new TextEncoder().encode(s)));
+export class FWSocket {
+  // A little typed wrapper around WebSocket.
+  // send() is ok before connecting
+  // close() is ok before connecting
+  // combine onclose() and onerror()
+  // guaranteed no callbacks after call to close()
+  // supports synchronous or asynchronous message traffic (recv vs onMsg)
+  private socket: WebSock;
+  private connected: boolean = false;
+  private unsent: string[] = [];
+  private error?: Error;
+  private recvrs: { (msg: RecvMsgAll): void }[] = [];
+
+  closing: boolean = false;
+
+  onConnect?: { (): void };
+  onMsg?: { (msg: RecvMsgAll): void };
+  onClose?: { (error?: Error): void };
+
+  constructor(url: string) {
+    this.socket = new WebSock(url);
+    this.socket.onopen = () => {
+      if (this.closing) return;
+      this.onConnect?.call(null);
+      this.connected = true;
+      let msg;
+      while ((msg = this.unsent.shift())) {
+        this.socket.send(msg);
+      }
+    };
+    this.socket.onmessage = (e: MessageEvent): void => {
+      if (this.closing) return;
+      const msg = JSON.parse(e.data);
+      const recvr = this.recvrs.shift();
+      if (recvr) {
+        // somebody was waiting for that particular message
+        recvr(msg);
+        return;
+      }
+      // fall back to the onMsg pattern
+      this.onMsg?.call(null, msg);
+    };
+    this.socket.onclose = (): void => {
+      const error = !this.error && this.closing ? new Error('closed early') : this.error;
+      this.onClose?.call(null, error);
+    };
+    this.socket.onerror = (event: ErrorEvent): void => {
+      // discard the error if we closed the websocket ourselves
+      if (this.closing) return;
+      this.error = event.error;
+    };
+  }
+
+  recv(recvr: (msg: RecvMsgAll) => void): void {
+    this.recvrs.push(recvr);
+  }
+
+  send(msg: object): void {
+    const jmsg = JSON.stringify(msg);
+    if (!this.connected) {
+      this.unsent.push(jmsg);
+    } else {
+      this.socket.send(jmsg);
+    }
+  }
+
+  close(): void {
+    if (this.closing) return;
+    this.closing = true;
+    this.socket.close();
+  }
 }
 
 export class FWClientWS {
-  advancer: Advancer;
-  socket: WebSock;
+  advancer: AdvancerNoFail;
+  socket: FWSocket;
 
   unsent: object[] = [];
   recvd: RecvMsgAll[] = [];
@@ -52,50 +120,15 @@ export class FWClientWS {
   subs: Record<number, FWSubscriptionWS | FWFetchWS> = {};
   reqs: Record<number, FWUploadWS> = {};
 
-  socketConnected: boolean = false;
-  loggedIn: boolean = false;
-  loginSent: boolean = false;
-  socketCloseStarted: boolean = false;
-  socketCloseDone: boolean = false;
-  wantClose: boolean = false;
+  constructor(socket: FWSocket) {
+    this.advancer = new AdvancerNoFail(this, this.advance);
 
-  // callback API //
-  onClose?: { (error?: Error): void };
+    this.socket = socket;
 
-  // FWClientWS-specific callback
-  onConnect?: { (): void };
-
-  constructor(url: string) {
-    this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
-
-    this.socket = new WebSock(url);
-    this.socket.onopen = (): void => {
-      setTimeout(() => {
-        if (!this.wantClose) this.onConnect?.call(null);
-      });
-      this.socketConnected = true;
-      this.advancer.schedule(null);
-    };
-    this.socket.onmessage = (e: MessageEvent): void => {
-      const msg = JSON.parse(e.data);
+    // receive all messages from the socket
+    this.socket.onMsg = (msg: RecvMsgAll) => {
       this.recvd.push(msg);
-      this.advancer.schedule(null);
-    };
-    this.socket.onclose = (): void => {
-      this.socketCloseDone = true;
-      let error = null;
-      if (!this.wantClose) {
-        error = new Error('closed early');
-      }
-      this.advancer.schedule(error);
-    };
-    this.socket.onerror = (event: ErrorEvent): void => {
-      // discard the error if we closed the websocket ourselves
-      let keptError = null;
-      if (!this.wantClose) {
-        keptError = event.error;
-      }
-      this.advancer.schedule(keptError);
+      this.advancer.schedule();
     };
   }
 
@@ -104,37 +137,7 @@ export class FWClientWS {
     return this.muxId;
   }
 
-  private advanceUp(): void {
-    // wait for a connection
-    if (!this.socketConnected) {
-      return;
-    }
-
-    if (!this.loggedIn) {
-      // auto-login for now, while we figure out the server
-      if (!this.loginSent) {
-        this.loginSent = true;
-        this.socket.send(
-          JSON.stringify({
-            type: 'password',
-            email: 'praj.ectowner@filmware.io',
-            password: tob64('password'),
-          }),
-        );
-      }
-      // wait for a result
-      const msg = this.recvd.shift();
-      if (!msg) return;
-      if (msg.type !== 'result') {
-        // TODO: if this fires, we get some weird looping.  Probably a bug in Advancer.
-        throw new Error(`expected type:result message but got type:${msg.type}`);
-      }
-      if (!msg.success) {
-        throw new Error('autologin failed');
-      }
-      this.loggedIn = true;
-    }
-
+  private advance(): void {
     // hand out recvd messages
     let msg;
     while ((msg = this.recvd.shift())) {
@@ -161,34 +164,8 @@ export class FWClientWS {
 
     // ship any unsent messages
     while ((msg = this.unsent.shift())) {
-      this.socket.send(JSON.stringify(msg));
+      this.socket.send(msg);
     }
-  }
-
-  private advanceDn(error?: Error): void {
-    // make sure our socket is closed
-    if (!this.socketCloseDone) {
-      if (!this.socketCloseStarted) {
-        this.socket.close();
-      }
-      return;
-    }
-
-    // we're done now
-    this.advancer.doneDn = true;
-
-    if (this.onClose) {
-      setTimeout(() => {
-        if (this.onClose) this.onClose(error);
-      });
-    }
-  }
-
-  // external API //
-  close() {
-    this.wantClose = true;
-    this.advancer.doneUp = true;
-    this.advancer.schedule(null);
   }
 
   // TODO: have a real api; as-written, the user composes the whole message except mux_id and type
@@ -203,7 +180,7 @@ export class FWClientWS {
     const sub = new FWSubscriptionWS(this, muxId);
     this.subs[muxId] = sub;
     this.unsent.push(msg);
-    this.advancer.schedule(null);
+    this.advancer.schedule();
     return sub;
   }
 
@@ -217,7 +194,7 @@ export class FWClientWS {
     const f = new FWFetchWS(this, muxId);
     this.subs[muxId] = f;
     this.unsent.push(msg);
-    this.advancer.schedule(null);
+    this.advancer.schedule();
     return f;
   }
 
@@ -231,7 +208,7 @@ export class FWClientWS {
     const req = new FWUploadWS(this, muxId);
     this.reqs[muxId] = req;
     this.unsent.push(msg);
-    this.advancer.schedule(null);
+    this.advancer.schedule();
     return req;
   }
 }
@@ -264,7 +241,7 @@ class FWSubscriptionWS {
 
   healthyCallback(func: () => void): void {
     setTimeout(() => {
-      if (!this.closed && !this.client.wantClose) {
+      if (!this.closed && !this.client.socket.closing) {
         func();
       }
     });
@@ -299,7 +276,7 @@ class FWSubscriptionWS {
     this.closed = true;
     this.client.unsent.push({ type: 'close', mux_id: this.muxId });
     delete this.client.subs[this.muxId];
-    this.client.advancer.schedule(null);
+    this.client.advancer.schedule();
   }
 }
 
@@ -322,7 +299,7 @@ class FWFetchWS {
 
   healthyCallback(func: () => void): void {
     setTimeout(() => {
-      if (!this.canceled && !this.client.wantClose) {
+      if (!this.canceled && !this.client.socket.closing) {
         func();
       }
     });
@@ -379,7 +356,7 @@ class FWUploadWS {
     this.finished = true;
     if (!this.onFinish) return;
     setTimeout(() => {
-      if (!this.client.wantClose) this.onFinish?.call(null);
+      if (!this.client.socket.closing) this.onFinish?.call(null);
     });
   }
 }

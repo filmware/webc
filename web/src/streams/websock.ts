@@ -51,6 +51,7 @@ export class WebSock {
   }
 
   private configure(ws: WebSocket) {
+    if (this.closed) return;
     ws.onopen = () => {
       if (this.onopen) this.onopen();
     };

@@ -1,9 +1,13 @@
 import { RouteProps } from 'react-router-dom';
 
-import Authenticated from '@/pages/Authenticated';
-import Dashboard from '@/pages/Authenticated/Dashboard';
-import SignIn from '@/pages/SignIn';
-import SignOut from '@/pages/SignOut';
+import Authenticated from '@/pages/Authenticated/Authenticated';
+import Chat from '@/pages/Authenticated/Chat';
+import Clips from '@/pages/Authenticated/Home/Clips';
+import Home from '@/pages/Authenticated/Home/Home';
+import Overview from '@/pages/Authenticated/Home/Overview';
+import Settings from '@/pages/Authenticated/Settings/Settings';
+import SignIn from '@/pages/SignIn/SignIn';
+import SignOut from '@/pages/SignOut/SignOut';
 
 type RouteConfig = {
   authRequired?: boolean;
@@ -15,9 +19,9 @@ type RouteConfig = {
 } & RouteProps;
 
 export const appPaths = {
-  authenticated: () => '/*',
-  signIn: () => '/sign-in',
-  signOut: () => '/sign-out',
+  authenticated: () => '*',
+  signIn: () => 'sign-in',
+  signOut: () => 'sign-out',
 };
 
 export const appRoutes: RouteConfig[] = [
@@ -40,18 +44,53 @@ export const appRoutes: RouteConfig[] = [
 ];
 
 export const authPaths = {
-  dashboard: () => '/app',
+  chat: () => 'chat',
+  home: () => 'app/*',
+  settings: () => 'settings',
 };
 
 export const authRoutes: RouteConfig[] = [
   {
-    element: <Dashboard />,
-    id: 'dashboard',
-    path: authPaths.dashboard(),
+    element: <Home />,
+    id: 'home',
+    path: authPaths.home(),
   },
   {
-    id: 'catch-all',
-    path: '*',
-    redirect: authPaths.dashboard(),
+    element: <Chat />,
+    id: 'chat',
+    path: authPaths.chat(),
   },
+  {
+    element: <Settings />,
+    id: 'settings',
+    path: authPaths.settings(),
+  },
+  // {
+  //   id: 'catch-all',
+  //   path: '*',
+  //   redirect: authPaths.home(),
+  // },
+];
+
+export const homePaths = {
+  overview: () => 'overview',
+  clips: () => 'clips',
+};
+
+export const homeRoutes: RouteConfig[] = [
+  {
+    element: <Overview />,
+    id: 'overview',
+    path: homePaths.overview(),
+  },
+  {
+    element: <Clips />,
+    id: 'clips',
+    path: homePaths.clips(),
+  },
+  // {
+  //   id: 'catch-all',
+  //   path: '*',
+  //   redirect: homePaths.overview(),
+  // },
 ];

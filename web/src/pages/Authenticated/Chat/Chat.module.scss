@@ -1,0 +1,26 @@
+.base {
+  border-top: solid var(--line-width) var(--color-border-secondary);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  .messages {
+    flex: 1 1 auto;
+    overflow: auto;
+
+    .message {
+      border-bottom: solid var(--line-width) var(--color-border-secondary);
+      padding: 16px;
+    }
+    .message:last-child {
+      border-bottom: 0;
+    }
+  }
+  .input {
+    align-items: center;
+    border-top: solid var(--line-width) var(--color-border-secondary);
+    display: flex;
+    flex: 0 0 48px;
+    padding: 0 16px;
+  }
+}

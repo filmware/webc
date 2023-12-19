@@ -1,8 +1,11 @@
 :root {
-  background-color: #242424;
-  color: rgb(255 255 255 / 87%);
+  --navbar-width: 48px;
+  --sidebar-width: 280px;
+  --topbar-height: 48px;
+  background-color: var(--color-bg);
+  color: rgb(0 0 0 / 87%);
   color-scheme: light dark;
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: Roboto, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-synthesis: none;
@@ -10,53 +13,94 @@
   line-height: 1.5;
   text-rendering: optimizeLegibility;
 }
-a {
-  color: #646cff;
-  font-weight: 500;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-body {
+body,
+#root {
   display: flex;
+  height: 100vh;
   margin: 0;
-  min-height: 100vh;
-  min-width: 320px;
-  place-items: center;
+  padding: 0;
+  width: 100vw;
+}
+h1, h2, h3, h4, h5, h6 {
+  font-family: Roboto-Medium, system-ui, sans-serif;
+  margin: 0;
 }
 h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+  font-size: 28px;
+  line-height: 48px;
 }
-button {
-  background-color: #1a1a1a;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 1em;
-  font-weight: 500;
-  padding: 0.6em 1.2em;
-  transition: border-color 0.25s;
+h2 {
+  font-size: 24px;
+  line-height: 44px;
 }
-button:hover {
-  border-color: #646cff;
+h3 {
+  font-size: 22px;
+  line-height: 40px;
 }
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+h4 {
+  font-size: 20px;
+  line-height: 36px;
+}
+h5 {
+  font-size: 18px;
+  line-height: 30px;
+}
+h6 {
+  font-size: 16px;
+  line-height: 24px;
+}
+ul, li {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    background-color: #fff;
-    color: #213547;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+@font-face {
+  font-family: Roboto;
+  src: url('@/assets/fonts/Roboto-Regular.woff2');
+}
+
+@font-face {
+  font-family: Roboto-Black;
+  src: url('@/assets/fonts/Roboto-Black.woff2');
+}
+
+@font-face {
+  font-family: Roboto-Bold;
+  src: url('@/assets/fonts/Roboto-Bold.woff2');
+}
+
+@font-face {
+  font-family: Roboto-Italic;
+  src: url('@/assets/fonts/Roboto-Italic.woff2');
+}
+
+@font-face {
+  font-family: Roboto-Light;
+  src: url('@/assets/fonts/Roboto-Light.woff2');
+}
+
+@font-face {
+  font-family: Roboto-LightItalic;
+  src: url('@/assets/fonts/Roboto-LightItalic.woff2');
+}
+
+@font-face {
+  font-family: Roboto-Medium;
+  src: url('@/assets/fonts/Roboto-Medium.woff2');
+}
+
+@font-face {
+  font-family: Roboto-MediumItalic;
+  src: url('@/assets/fonts/Roboto-MediumItalic.woff2');
+}
+
+@font-face {
+  font-family: Roboto-Thin;
+  src: url('@/assets/fonts/Roboto-Thin.woff2');
+}
+
+@font-face {
+  font-family: Roboto-ThinItalic;
+  src: url('@/assets/fonts/Roboto-ThinItalic.woff2');
 }

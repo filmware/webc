@@ -1,0 +1,29 @@
+.base {
+  background-color: #f5f2ff;
+  display: flex;
+  flex: 0 0 var(--sidebar-width);
+  flex-direction: column;
+  height: 100%;
+
+  section {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px;
+  }
+  section.search {
+    background-color: #ede8ff;
+  }
+  li {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+  }
+  a, a:link {
+    color: #000;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 32px;
+    padding: 0 12px;
+    text-decoration: none;
+  }
+}

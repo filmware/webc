@@ -1,0 +1,11 @@
+.base {
+  align-items: center;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 8px;
+
+  svg {
+    height: 24px;
+    width: 24px;
+  }
+}

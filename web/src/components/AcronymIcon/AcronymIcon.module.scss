@@ -1,0 +1,31 @@
+.base {
+  align-items: center;
+  border-radius: 3px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: bold;
+  height: 24px;
+  justify-content: center;
+  line-height: 1;
+  width: 24px;
+}
+.base.round {
+  border-radius: 12px;
+}
+.base.small {
+  font-size: 10px;
+  height: 20px;
+  width: 20px;
+}
+.base.small.round {
+  border-radius: 10px;
+}
+.base.large {
+  font-size: 15px;
+  height: 32px;
+  width: 32px;
+}
+.base.large.round {
+  border-radius: 16px;
+}

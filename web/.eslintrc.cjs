@@ -38,6 +38,7 @@ module.exports = {
     ],
     // Can disagree with @typescript-eslint/member-ordering.
     '@typescript-eslint/adjacent-overload-signatures': 'off',
+    '@typescript-eslint/ban-ts-comment': ['error', { 'ts-nocheck': 'allow-with-description'}],
     '@typescript-eslint/no-explicit-any': 'error',
     '@typescript-eslint/no-unused-vars': [
       'error',

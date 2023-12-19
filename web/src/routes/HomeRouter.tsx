@@ -1,13 +1,13 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 
-import { authRoutes } from '@/routes';
+import { homeRoutes } from '@/routes';
 
-function AuthRouter() {
+function HomeRouter() {
   return (
     <Routes>
-      {authRoutes.map((route) => {
+      {homeRoutes.map((route) => {
         return route.path === '*' ? (
-          <Route element={<Navigate to={'app'} />} key={route.id} path={route.path} />
+          <Route element={<Navigate to={'overview'} />} key={route.id} path={route.path} />
         ) : (
           <Route {...route} element={route.element} key={route.id} path={route.path} />
         );
@@ -16,4 +16,4 @@ function AuthRouter() {
   );
 }
 
-export default AuthRouter;
+export default HomeRouter;

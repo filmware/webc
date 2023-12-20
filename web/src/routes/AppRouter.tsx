@@ -1,13 +1,16 @@
+import { useObservable } from 'micro-observables';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { appPaths, appRoutes } from '@/routes';
-import authStore from '@/stores/auth';
+import streamStore from '@/stores/stream';
 
 function AppRouter() {
+  const isAuthenticated = useObservable(streamStore.authenticated);
+
   return (
     <Routes>
       {appRoutes.map((route) => {
-        if (route.authRequired && !authStore.token) {
+        if (route.authRequired && !isAuthenticated) {
           return <Route {...route} element={<Navigate to={appPaths.signIn()} />} key={route.id} />;
         } else if (route.redirect) {
           /**

@@ -5,7 +5,7 @@ import themeStore, { MATCH_MEDIA_SCHEME_DARK, MATCH_MEDIA_SCHEME_LIGHT } from '@
 import { camelToKebab } from '@/utils/string';
 
 function useTheme() {
-  const { token } = theme.useToken();
+  const { theme: appliedTheme, token } = theme.useToken();
 
   const handleSchemeChange = useCallback((event: MediaQueryListEvent) => {
     if (!event.matches) themeStore.updateSystemMode();
@@ -38,7 +38,7 @@ function useTheme() {
       // Write token value out to CSS variables so our theme can use them directly in our CSS modules.
       if (value) document.documentElement.style.setProperty(cssVarKey, value.toString());
     }
-  }, [token]);
+  }, [token, appliedTheme.id]);
 }
 
 export default useTheme;

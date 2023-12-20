@@ -37,6 +37,7 @@ function SideBar() {
         <NavLink to="overview">Overview</NavLink>
         <NavLink to="clips">Clips</NavLink>
         <a>Upload Report</a>
+        <a>Upload Callsheet</a>
       </section>
     </div>
   );

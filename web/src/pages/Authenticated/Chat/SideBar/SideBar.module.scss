@@ -4,27 +4,51 @@
   flex: 0 0 var(--sidebar-width);
   flex-direction: column;
   height: 100%;
+  max-width: var(--sidebar-width);
 
   section {
     display: flex;
     flex-direction: column;
-    padding: 8px 12px;
   }
   section.search {
     background-color: #ede8ff;
+    padding: 8px 12px;
+  }
+  h4 {
+    padding: 8px 12px;
   }
   li {
     align-items: center;
+    cursor: pointer;
     display: flex;
     gap: 8px;
-  }
-  a,
-  a:link {
-    color: #000;
-    font-size: 14px;
-    font-weight: 500;
-    line-height: 32px;
+    line-height: 36px;
     padding: 0 12px;
-    text-decoration: none;
+
+    .icon {
+      align-items: center;
+      display: inline-flex;
+      flex: 0 0 auto;
+    }
+    .label {
+      flex: 1 1 auto;
+      font-size: 16px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+  li.active {
+    background-color: #e9dcff;
+  }
+}
+.base.dark {
+  background-color: #291558;
+
+  section.search {
+    background-color: #1e0f40;
+  }
+  li.active {
+    background-color: #0f0920;
   }
 }

@@ -1,5 +1,65 @@
+import { Button, Form, Input, message } from 'antd';
+import { useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+import Logo from '@/components/Logo';
+import Root from '@/components/Root';
+import { appPaths } from '@/routes';
+import streamStore from '@/stores/stream';
+
+import css from './SignIn.module.scss';
+
+type FieldType = {
+  email?: string;
+  password?: string;
+};
+
+const INITIAL_VALUES: FieldType = {
+  email: 'praj.ectowner@filmware.io',
+  password: 'password',
+};
+
 function SignIn() {
-  return <div>Sign In</div>;
+  const navigate = useNavigate();
+  const [form] = Form.useForm();
+  const [messageApi, contextHolder] = message.useMessage();
+
+  const handleFormFinish = useCallback(async () => {
+    const values = await form.validateFields();
+    try {
+      await streamStore.login(values.email, values.password);
+      navigate(appPaths.app());
+    } catch (e) {
+      messageApi.open({ type: 'error', content: `Unable to login - ${(e as Error).message}` });
+    }
+  }, [form, messageApi, navigate]);
+
+  return (
+    <Root layout="center">
+      <Form
+        className={css.base}
+        form={form}
+        initialValues={INITIAL_VALUES}
+        layout="vertical"
+        onFinish={handleFormFinish}>
+        <Logo showLabel />
+        <Form.Item<FieldType>
+          name="email"
+          rules={[{ required: true, message: 'An email is required' }]}>
+          <Input placeholder="email" />
+        </Form.Item>
+        <Form.Item<FieldType>
+          name="password"
+          rules={[{ required: true, message: 'Password is required' }]}>
+          <Input.Password placeholder="password" />
+        </Form.Item>
+        <Button block htmlType="submit" type="primary">
+          Sign In
+        </Button>
+        {contextHolder}
+      </Form>
+    </Root>
+  );
 }
 
 export default SignIn;

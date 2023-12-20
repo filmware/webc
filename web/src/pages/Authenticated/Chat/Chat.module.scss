@@ -10,7 +10,46 @@
 
     .message {
       border-bottom: solid var(--line-width) var(--color-border-secondary);
+      color: var(--color-text);
+      display: flex;
+      gap: 8px;
       padding: 16px;
+
+      .avatar {
+        flex: 0 0 auto;
+      }
+      .content {
+        flex: 1 1 auto;
+      }
+      .header {
+        align-items: center;
+        display: inline-flex;
+        gap: 8px;
+        position: relative;
+        width: 100%;
+
+        .user {
+          font-size: 16px;
+          font-weight: bold;
+        }
+        .time {
+          color: var(--color-text-tertiary);
+        }
+        .options {
+          align-items: center;
+          display: inline-flex;
+          position: absolute;
+          right: 0;
+          visibility: hidden;
+        }
+      }
+    }
+    .message:hover {
+      .header {
+        .options {
+          visibility: visible;
+        }
+      }
     }
     .message:last-child {
       border-bottom: 0;

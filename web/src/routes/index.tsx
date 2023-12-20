@@ -19,9 +19,10 @@ type RouteConfig = {
 } & RouteProps;
 
 export const appPaths = {
-  authenticated: () => '*',
-  signIn: () => 'sign-in',
-  signOut: () => 'sign-out',
+  app: () => '/app',
+  authenticated: () => '/*',
+  signIn: () => '/sign-in',
+  signOut: () => '/sign-out',
 };
 
 export const appRoutes: RouteConfig[] = [

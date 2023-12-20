@@ -268,7 +268,7 @@ BEGIN
             TG_ARGV[i],
             to_char(
                 (output->>TG_ARGV[i])::timestamptz,
-                'YYYY-MM-DD"T"HH24:MI:SS:USZ'
+                'YYYY-MM-DD"T"HH24:MI:SS.USZ'
             )
         );
     end loop;

@@ -2,6 +2,7 @@ import { Button, Form, Input, message } from 'antd';
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import FormItem from '@/components/FormItem';
 import Logo from '@/components/Logo';
 import Root from '@/components/Root';
 import { appPaths } from '@/routes';
@@ -42,17 +43,19 @@ function SignIn() {
         initialValues={INITIAL_VALUES}
         layout="vertical"
         onFinish={handleFormFinish}>
-        <Logo showLabel />
-        <Form.Item<FieldType>
+        <div className={css.logo}>
+          <Logo showLabel />
+        </div>
+        <FormItem<FieldType>
           name="email"
           rules={[{ required: true, message: 'An email is required' }]}>
-          <Input placeholder="email" />
-        </Form.Item>
-        <Form.Item<FieldType>
+          <Input allowClear placeholder="email" />
+        </FormItem>
+        <FormItem<FieldType>
           name="password"
           rules={[{ required: true, message: 'Password is required' }]}>
-          <Input.Password placeholder="password" />
-        </Form.Item>
+          <Input.Password allowClear placeholder="password" />
+        </FormItem>
         <Button block htmlType="submit" type="primary">
           Sign In
         </Button>

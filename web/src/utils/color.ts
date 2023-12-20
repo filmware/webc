@@ -6,8 +6,14 @@ import md5 from './md5';
 const HEX = '[0-9a-f]';
 const NUM = '-?\\d+\\.?\\d*';
 const REGEX_HEX = new RegExp(`^#?(${HEX}{2})(${HEX}{2})(${HEX}{2})(${HEX}{2})?$`, 'i');
-const REGEX_HSL = new RegExp(`^hsl\\((${NUM})(deg|grad|rad|turn)?\\s+(${NUM})%\\s+(${NUM})%(\\s*\\/\\s*(${NUM})(%)?)?\\)$`, 'i');
-const REGEX_RGBA = new RegExp(`^rgba?\\((${NUM})\\s+(${NUM})\\s+(${NUM})(\\s*\\/\\s*(${NUM})(%)?)?\\)$`, 'i');
+const REGEX_HSL = new RegExp(
+  `^hsl\\((${NUM})(deg|grad|rad|turn)?\\s+(${NUM})%\\s+(${NUM})%(\\s*\\/\\s*(${NUM})(%)?)?\\)$`,
+  'i',
+);
+const REGEX_RGBA = new RegExp(
+  `^rgba?\\((${NUM})\\s+(${NUM})\\s+(${NUM})(\\s*\\/\\s*(${NUM})(%)?)?\\)$`,
+  'i',
+);
 
 export class HslColor {
   /**
@@ -44,13 +50,23 @@ export class HslColor {
     this.#a = Math.max(0.0, Math.min(1.0, a));
   }
 
-  get h(): number { return this.#h; }
-  get s(): number { return this.#s; }
-  get l(): number { return this.#l; }
-  get a(): number { return this.#a; }
+  get h(): number {
+    return this.#h;
+  }
+  get s(): number {
+    return this.#s;
+  }
+  get l(): number {
+    return this.#l;
+  }
+  get a(): number {
+    return this.#a;
+  }
 
   toString(): string {
-    return `hsl(${Math.round(this.#h * 360)}deg ${percentString(this.#s)} ${percentString(this.#l)} / ${this.a})`;
+    return `hsl(${Math.round(this.#h * 360)}deg ${percentString(this.#s)} ${percentString(
+      this.#l,
+    )} / ${this.a})`;
   }
 }
 
@@ -89,13 +105,23 @@ export class RgbaColor {
     this.#a = Math.max(0.0, Math.min(1.0, a));
   }
 
-  get r(): number { return this.#r; }
-  get g(): number { return this.#g; }
-  get b(): number { return this.#b; }
-  get a(): number { return this.#a; }
+  get r(): number {
+    return this.#r;
+  }
+  get g(): number {
+    return this.#g;
+  }
+  get b(): number {
+    return this.#b;
+  }
+  get a(): number {
+    return this.#a;
+  }
 
   toString(): string {
-    return `rgba(${Math.round(this.#r * 255)} ${Math.round(this.#g * 255)} ${Math.round(this.#b * 255)} / ${this.#a})`;
+    return `rgba(${Math.round(this.#r * 255)} ${Math.round(this.#g * 255)} ${Math.round(
+      this.#b * 255,
+    )} / ${this.#a})`;
   }
 }
 
@@ -123,9 +149,15 @@ class Color {
     }
   }
 
-  get hex(): string { return this.rgbaToHex(this.#rgba); }
-  get hsl(): HslColor { return this.rgbaToHsl(this.#rgba); }
-  get rgba(): RgbaColor { return this.#rgba; }
+  get hex(): string {
+    return this.rgbaToHex(this.#rgba);
+  }
+  get hsl(): HslColor {
+    return this.rgbaToHsl(this.#rgba);
+  }
+  get rgba(): RgbaColor {
+    return this.#rgba;
+  }
 
   /**
    * Converters
@@ -146,10 +178,10 @@ class Color {
 
   hslToRgba(hsl: HslColor): RgbaColor {
     const { h, s, l, a } = hsl;
-    let [ r, g, b ] = [ 0, 0, 0 ];
+    let [r, g, b] = [0, 0, 0];
 
     if (s === 0) {
-      r = g = b = l;      // Achromatic
+      r = g = b = l; // Achromatic
     } else {
       const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
       const p = 2 * l - q;
@@ -188,10 +220,10 @@ class Color {
     const min = Math.min(r, g, b);
     const avg = (max + min) / 2;
     const l = avg;
-    let [ h, s ] = [ avg, avg ];
+    let [h, s] = [avg, avg];
 
     if (max === min) {
-      h = s = 0;        // Achromatic
+      h = s = 0; // Achromatic
     } else {
       const distance = max - min;
       if (max === r) h = (g - b) / distance + (g < b ? 6 : 0);

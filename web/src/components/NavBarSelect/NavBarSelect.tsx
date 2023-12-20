@@ -1,5 +1,13 @@
 import { Dropdown } from 'antd';
-import { PropsWithChildren, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  PropsWithChildren,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import { randomUUID } from '@/utils/string';
 
@@ -8,15 +16,20 @@ import css from './NavBarSelect.module.scss';
 type MenuItem = {
   key: string;
   label: ReactNode;
-}
+};
 
 export type Props = {
   menu: MenuItem[];
   onSelect?: (key: string) => void;
   placement?: 'bottom' | 'top';
-}
+};
 
-function NavBarSelect({ children, menu, onSelect, placement = 'bottom' }: PropsWithChildren<Props>) {
+function NavBarSelect({
+  children,
+  menu,
+  onSelect,
+  placement = 'bottom',
+}: PropsWithChildren<Props>) {
   const uuid = useRef(randomUUID());
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -32,7 +45,10 @@ function NavBarSelect({ children, menu, onSelect, placement = 'bottom' }: PropsW
     return document.getElementById(uuid.current) ?? trigger;
   }, []);
 
-  const handleDropdownClick = useCallback(({ key }: { key: string }) => onSelect?.(key), [onSelect]);
+  const handleDropdownClick = useCallback(
+    ({ key }: { key: string }) => onSelect?.(key),
+    [onSelect],
+  );
 
   useEffect(() => {
     function handleOutsideClick(e: Event) {

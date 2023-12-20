@@ -10,9 +10,9 @@ import NavBarSelect from '@/components/NavBarSelect';
 import css from './NavBar.module.scss';
 
 type Project = {
-  id: string
-  name: string
-}
+  id: string;
+  name: string;
+};
 
 const PROJECTS: Project[] = [
   { id: 'barbie', name: 'Barbie 4' },
@@ -31,25 +31,33 @@ function NavBar() {
 
   const project = useMemo(() => PROJECTS.find((project) => project.id === projectId), [projectId]);
 
-  const projectMenu = useMemo(() => PROJECTS.map((project) => ({
-    key: project.id,
-    label: (
-      <>
-        <AcronymIcon value={project.name} />
-        <span>{project.name}</span>
-      </>
-    ),
-  })), []);
+  const projectMenu = useMemo(
+    () =>
+      PROJECTS.map((project) => ({
+        key: project.id,
+        label: (
+          <>
+            <AcronymIcon value={project.name} />
+            <span>{project.name}</span>
+          </>
+        ),
+      })),
+    [],
+  );
 
-  const userMenu = useMemo(() => USER_MENU.map((item) => ({
-    key: item.key,
-    label: (
-      <>
-        <Icon name={item.icon} />
-        <span>{item.label}</span>
-      </>
-    ),
-  })), []);
+  const userMenu = useMemo(
+    () =>
+      USER_MENU.map((item) => ({
+        key: item.key,
+        label: (
+          <>
+            <Icon name={item.icon} />
+            <span>{item.label}</span>
+          </>
+        ),
+      })),
+    [],
+  );
 
   return (
     <nav>
@@ -104,10 +112,13 @@ function NavBarItem({ children, icon, onClick, to }: PropsWithChildren<NavBarIte
     return `${icon}${isActive ? 'On' : ''}`;
   }, [icon, isActive]);
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    if (to) navigate(to);
-    onClick?.(e);
-  }, [navigate, onClick, to]);
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (to) navigate(to);
+      onClick?.(e);
+    },
+    [navigate, onClick, to],
+  );
 
   return (
     <div className={className} onClick={handleClick}>

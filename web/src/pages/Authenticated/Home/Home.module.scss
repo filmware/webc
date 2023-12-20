@@ -2,7 +2,7 @@
   display: flex;
   height: 100vh;
   width: 100%;
-  
+
   .sidebar {
     background-color: #f5f2ff;
     display: flex;
@@ -17,7 +17,8 @@
       background-color: #ede8ff;
       padding: 8px 12px;
     }
-    a, a:link {
+    a,
+    a:link {
       color: #000;
       font-size: 14px;
       font-weight: 500;
@@ -38,7 +39,8 @@
     section.date {
       background-color: #1e0f40;
     }
-    a, a:link {
+    a,
+    a:link {
       color: #fff;
     }
   }

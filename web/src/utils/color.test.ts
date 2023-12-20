@@ -30,7 +30,9 @@ describe('Color Utilities', () => {
       });
 
       it('should read rgba object', () => {
-        expect(new Color(new RgbaColor(1.0, 0.5, 0.0, 0.3)).toString()).toBe('rgba(255 128 0 / 0.3)');
+        expect(new Color(new RgbaColor(1.0, 0.5, 0.0, 0.3)).toString()).toBe(
+          'rgba(255 128 0 / 0.3)',
+        );
       });
     });
   });

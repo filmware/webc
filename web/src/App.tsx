@@ -12,7 +12,8 @@ function App() {
   useTheme();
 
   return (
-    <ConfigProvider theme={{ algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm }}>
+    <ConfigProvider
+      theme={{ algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm }}>
       <AppRouter />
     </ConfigProvider>
   );

@@ -26,9 +26,14 @@ export function randomUUID(): string {
     values[6] = 0x40 | (values[6] & 0x0f);
     values[8] = 0x80 | (values[8] & 0x3f);
 
-    values.forEach((x) => { out += NIBBLE[x >>> 4] + NIBBLE[x & 0x0f]; });
+    values.forEach((x) => {
+      out += NIBBLE[x >>> 4] + NIBBLE[x & 0x0f];
+    });
   } else {
-    out = new Array(32).fill(null).map(() => NIBBLE[Math.floor(Math.random() * NIBBLE.length)]).join('');
+    out = new Array(32)
+      .fill(null)
+      .map(() => NIBBLE[Math.floor(Math.random() * NIBBLE.length)])
+      .join('');
   }
 
   return [

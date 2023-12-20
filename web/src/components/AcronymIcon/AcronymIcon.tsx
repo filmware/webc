@@ -6,13 +6,13 @@ import Color, { stringToColor } from '@/utils/color';
 
 import css from './AcronymIcon.module.scss';
 
-type Size = 'small' | 'medium' | 'large'
+type Size = 'small' | 'medium' | 'large';
 
 export type Props = {
   round?: boolean;
   size?: Size;
   value: string;
-}
+};
 
 function AcronymIcon({ round, size = 'medium', value }: Props) {
   const isDarkMode = useObservable(themeStore.isDarkMode);
@@ -34,10 +34,15 @@ function AcronymIcon({ round, size = 'medium', value }: Props) {
     return value
       .split(/\s+/)
       .map((word: string) => word.substring(0, 1).toLocaleUpperCase())
-      .slice(0, 2).join('');
+      .slice(0, 2)
+      .join('');
   }, [value]);
 
-  return <div className={className} style={style}>{acronym}</div>;
+  return (
+    <div className={className} style={style}>
+      {acronym}
+    </div>
+  );
 }
 
 export default AcronymIcon;

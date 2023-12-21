@@ -1,0 +1,133 @@
+.base {
+  height: 48px;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 48px;
+
+  .plugBlink {
+    animation: disconnectBlink 2000ms linear 200ms;
+    color: var(--color-error-active);
+    opacity: 0;
+  }
+  .plugFemale,
+  .plugMale {
+    color: var(--color-error-active);
+    height: 48px;
+    position: absolute;
+    transform-origin: top left;
+    width: 48px;
+  }
+  .plugFemale {
+    animation: disconnectFemale 200ms ease-out;
+    transform: rotate(-15deg);
+  }
+  .plugMale {
+    animation: disconnectMale 200ms ease-out;
+    transform: rotate(15deg);
+  }
+}
+.base.connected {
+  .plugBlink {
+    animation: none;
+    opacity: 0;
+  }
+  .plugFemale,
+  .plugMale {
+    color: var(--color-primary);
+    transform: rotate(0deg);
+  }
+  .plugFemale {
+    animation: connectFemale 200ms ease-in;
+  }
+  .plugMale {
+    animation: connectMale 200ms ease-in;
+  }
+}
+.base.onDark {
+  .plugBlink,
+  .plugFemale,
+  .plugMale {
+    color: var(--color-bg-base);
+  }
+}
+
+@keyframes connectMale {
+  from {
+    color: var(--color-error-active);
+    transform: rotate(15deg);
+  }
+  to {
+    color: var(--color-primary);
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes connectFemale {
+  from {
+    color: var(--color-error-active);
+    transform: rotate(-15deg);
+  }
+  to {
+    color: var(--color-primary);
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes disconnectBlink {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.5;
+  }
+  20% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.5;
+  }
+  40% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  60% {
+    opacity: 0;
+  }
+  70% {
+    opacity: 0.5;
+  }
+  80% {
+    opacity: 0;
+  }
+  90% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes disconnectMale {
+  from {
+    color: var(--color-primary);
+    transform: rotate(0deg);
+  }
+  to {
+    color: var(--color-error-active);
+    transform: rotate(15deg);
+  }
+}
+
+@keyframes disconnectFemale {
+  from {
+    color: var(--color-primary);
+    transform: rotate(0deg);
+  }
+  to {
+    color: var(--color-error-active);
+    transform: rotate(-15deg);
+  }
+}

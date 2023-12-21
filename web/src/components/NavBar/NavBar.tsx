@@ -2,12 +2,11 @@ import { useObservable } from 'micro-observables';
 import { PropsWithChildren, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { Logo } from '@/assets';
 import AcronymIcon from '@/components/AcronymIcon';
 import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import NavBarSelect from '@/components/NavBarSelect';
-import { appPaths } from '@/routes';
+import { appPaths, authPaths } from '@/routes';
 import streamStore from '@/stores/stream';
 
 import css from './NavBar.module.scss';
@@ -18,9 +17,16 @@ const USER_MENU = [
 ];
 
 function NavBar() {
+  const status = useObservable(streamStore.status);
   const projectList = useObservable(streamStore.projectList);
   const projectUuid = useObservable(streamStore.projectUuid);
   const navigate = useNavigate();
+
+  const className = useMemo(() => {
+    const classes = [];
+    if (!status.connected) classes.push(css.disconnected);
+    return classes.join(' ');
+  }, [status.connected]);
 
   const project = useMemo(
     () => projectList.find((p) => p.project === projectUuid),
@@ -58,6 +64,9 @@ function NavBar() {
   const handleUserMenuSelect = useCallback(
     (key: string) => {
       switch (key) {
+        case 'settings':
+          navigate(authPaths.settings());
+          break;
         case 'sign-out':
           navigate(appPaths.signOut());
           break;
@@ -67,12 +76,8 @@ function NavBar() {
   );
 
   return (
-    <nav>
-      <section className={css.logo}>
-        <NavBarItem key="logo">
-          <Logo />
-        </NavBarItem>
-      </section>
+    <nav className={className}>
+      <section className={css.logo} />
       <section className={css.top}>
         <NavBarItem key="project">
           <NavBarSelect menu={projectMenu} onSelect={(key) => streamStore.setProjectUuid(key)}>

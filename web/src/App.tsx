@@ -2,10 +2,12 @@ import { ConfigProvider, theme } from 'antd';
 import { useObservable } from 'micro-observables';
 import { useMemo } from 'react';
 
+import useTheme from '@/hooks/useTheme';
 import AppRouter from '@/routes/AppRouter';
 import themeStore from '@/stores/theme';
 
-import useTheme from './hooks/useTheme';
+import css from './App.module.scss';
+import ConnectionStatus from './components/ConnectionStatus';
 
 /**
  * Context providers and main app component are separated out to ensure
@@ -14,7 +16,12 @@ import useTheme from './hooks/useTheme';
 function AppMain() {
   useTheme();
 
-  return <AppRouter />;
+  return (
+    <div className={css.base}>
+      <AppRouter />
+      <ConnectionStatus />
+    </div>
+  );
 }
 
 function App() {

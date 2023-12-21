@@ -1,10 +1,21 @@
 nav {
-  background-image: linear-gradient(to bottom right, #9b55ff, #763cfe);
+  background-image: linear-gradient(to bottom, transparent, var(--color-primary));
   color: #fff;
   display: flex;
   flex: 0 0 var(--navbar-width);
   flex-direction: column;
+  position: relative;
 
+  &::before {
+    background-color: var(--color-primary-hover);
+    content: '';
+    height: 100%;
+    left: 0;
+    position: absolute;
+    top: 0;
+    width: 100%;
+    z-index: -1;
+  }
   section {
     align-items: center;
     display: flex;
@@ -20,7 +31,7 @@ nav {
     }
   }
   section.logo {
-    flex: 0 0 auto;
+    flex: 0 0 var(--topbar-height);
 
     svg {
       height: 24px;
@@ -32,6 +43,12 @@ nav {
   }
   section.bottom {
     justify-content: flex-end;
+  }
+}
+nav.disconnected {
+  &::before {
+    background-color: var(--color-error);
+    transition: background-color 200ms linear;
   }
 }
 .navBarItem {

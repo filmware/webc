@@ -99,23 +99,25 @@ Example:
     "mux_id": 99,
     "projects": {
         "since": [[0, 14], [1, 99]],
-        # ONE OF
-        "match": "*",
-        "match": "project", "value": "a-proj-uuid"
+        # FUTURE: "permissions_since": [[0, 14], [1, 99]],
+        # FUTURE: "users_since": [[0, 14], [1, 99]],
     },
-    # TODO: figure out how users will be streamed; this is not right.
+    "accounts": {
+        "since": [[0, 14], [1, 99]],
+        # FUTURE: "permissions_since": [[0, 14], [1, 99]],
+        # FUTURE: "users_since": [[0, 14], [1, 99]],
+    },
     "users": {
         "since": [[0, 14], [1, 99]],
-        # ONE OF
-        "match": "project", "value": "a-proj-uuid"
-        "match": "user", "value": "a-user-uuid"
+        # FUTURE: "permissions_since": [[0, 14], [1, 99]],
+        # FUTURE: "users_since": [[0, 14], [1, 99]],
     },
     "permissions": {
         "since": [[0, 14], [1, 99]],
-        # ONE OF
-        "match": "project", "value": "a-proj-uuid"
-        "match": "user", "value": "a-user-uuid"
+        # FUTURE: users_since is necessary to capture offline additions
+        # FUTURE: "users_since": [[0, 14], [1, 99]],
     },
+
     "entries": {
         "since": [[0, 14], [1, 99]],
         # ONE OF:
@@ -127,7 +129,6 @@ Example:
         "since": [[0, 14], [1, 99]],
         # ONE OF:
         "match": "project", "value": "a-proj-uuid"
-        "match": "user", "value": "a-user-uuid"
     },
     "comments": {
         "since": [[0, 14], [1, 99]],
@@ -328,7 +329,7 @@ Example:
 
 A server tells a client about a user.
 
-Note that email and password are privileged fields and not exported normally.
+Note that a user contains no account info, but a mutable pointer to an account.
 
 Example:
 
@@ -340,6 +341,30 @@ Example:
     "seqno": 9194,
     "version": "the-version-uuid",
     "user": "the-user-uuid",
+    "account": "the-account-uuid",
+    "submissiontime": "the-submission-time",
+    "authortime": "the-author-time",
+    "archivetime": [...]
+}
+```
+
+#### `type:account`
+
+A server tells a client about an account.
+
+Note that email and password are privileged and not normally exported.
+
+Example:
+
+```
+{
+    "type": "account",
+    "mux_id": 99,
+    "srv_id": 1,
+    "seqno": 9194,
+    "version": "the-version-uuid",
+    "account": "the-account-uuid",
+    "user": "the-default-user-uuid",
     "name": "joe.blow",
     "submissiontime": "the-submission-time",
     "authortime": "the-author-time",

@@ -882,8 +882,19 @@ async def ws_handler(conn, request):
         log.error(e)
         raise
 
-app = web.Application()
-app.add_routes(route)
+
+async def amain():
+    app = web.Application()
+    app.add_routes(route)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, 'localhost', 8080)
+    await site.start()
+    print("\x1b[32mapp.py is listening on http://localhost:8080\x1b[m", file=sys.stderr)
+    try:
+        await asyncio.sleep(sys.maxsize)
+    finally:
+        await runner.cleanup()
 
 if __name__ == '__main__':
-    web.run_app(app)
+    asyncio.run(amain())

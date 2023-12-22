@@ -88,7 +88,7 @@ export function isBefore(a: Beforable, akind: string, b: Beforable, bkind: strin
     return false;
   }
   // tiebreaker
-  if (a.srvId === b.srvId) return a.srvId < b.srvId;
+  if (a.srvId === b.srvId) return a.seqno < b.seqno;
   return a.srvId < b.srvId;
 }
 

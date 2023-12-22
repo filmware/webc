@@ -3,9 +3,13 @@ import {
   FWComment,
   FWComments,
   FWCommentsResult,
+  FWProject,
+  FWProjects,
   FWTopic,
   FWTopics,
   FWTopicsResult,
+  FWUserAccount,
+  FWUserAccounts,
 } from './compilers';
 import { ConnectionState, ConnectionStatus, FWConnection, FWConnectionWS } from './conn';
 import { Advancer, isBefore, isBeforeSort, Uuid, UuidRecord } from './utils';
@@ -19,6 +23,8 @@ export type {
   FWSubscription,
   FWFetch,
   // compilers
+  FWProject,
+  FWUserAccount,
   FWComment,
   FWCommentsResult,
   FWTopic,
@@ -37,6 +43,8 @@ export {
   // client
   FWClientWS,
   // compilers
+  FWProjects,
+  FWUserAccounts,
   FWComments,
   FWTopics,
   // conn

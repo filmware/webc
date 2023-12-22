@@ -282,9 +282,19 @@ for each row execute procedure stream_send(
     'project', 'authortime', 'submissiontime'
 );
 
+create or replace trigger accounts_trigger after insert on accounts
+for each row execute procedure stream_send(
+    'account', 'authortime', 'submissiontime'
+);
+
 create or replace trigger users_trigger after insert on users
 for each row execute procedure stream_send(
     'user', 'authortime', 'submissiontime'
+);
+
+create or replace trigger sessions_trigger after insert or update on sessions
+for each row execute procedure stream_send(
+    'session', 'expiry'
 );
 
 create or replace trigger permissions_trigger after insert on permissions

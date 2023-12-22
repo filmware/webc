@@ -8,6 +8,7 @@ import {
   FWConnectionWS,
   FWTopic,
   FWTopics,
+  FWUserAccounts,
   Uuid,
   UuidRecord,
 } from '@/streams';
@@ -26,6 +27,7 @@ type Project = {
 class StreamStore {
   #connection: FWConnectionWS;
   #client?: FWClient;
+  #userAccountsStore?: FWUserAccounts;
   #topicStore?: FWTopics;
   #commentStore?: FWComments;
 
@@ -47,13 +49,15 @@ class StreamStore {
 
   async login(email: string, password: string): Promise<void> {
     this.#client = await this.#connection.login(email, password);
+    this.#userAccountsStore = new FWUserAccounts(this.#client);
 
     this.authenticated.set(true);
 
     const fetch = this.#client.fetch({ projects: { match: '*' } });
     fetch.onFetch = (payload) => {
-      this.projectList.set(payload as unknown as Project[]);
-      if (payload.length !== 0) this.setProjectUuid(payload[0].project);
+      const projectPayload = payload as unknown as Project[];
+      this.projectList.set(projectPayload);
+      if (projectPayload.length !== 0) this.setProjectUuid(projectPayload[0].project);
     };
   }
 
@@ -77,11 +81,14 @@ class StreamStore {
   }
 
   setTopicUuid(uuid: string) {
-    if (!this.#client) return;
+    if (!this.#client || !this.#userAccountsStore) return;
 
     this.topicUuid.set(uuid);
 
-    this.#commentStore = new FWComments(this.#client, { match: 'topic', value: uuid });
+    this.#commentStore = new FWComments(this.#client, this.#userAccountsStore, {
+      match: 'topic',
+      value: uuid,
+    });
     this.#commentStore.observable.subscribe(({ comments, topLevels }) => {
       this.commentList.set(topLevels);
       this.commentMap.set(comments);

@@ -176,7 +176,7 @@ class Listener:
             if not enable and project in self.allprojects:
                 return "a permission was removed from this account"
         if typ == "session":
-            if obj["session"] == this.session and not obj["valid"]:
+            if obj["session"] == self.session and not obj["valid"]:
                 return "this session was invalidated"
         return None
 
@@ -240,6 +240,157 @@ def with_mux(mux_id, obj):
     return {"mux_id": mux_id, **obj}
 
 
+class AllSpec:
+    """Like a SubscriptionSpec, but where the main filter will eventually be rbac-based."""
+
+    def __init__(self, since):
+        self.since = since
+
+    @classmethod
+    def from_json(cls, obj):
+        if obj is None:
+            return None
+        since = obj.get("since", [])
+        # validate
+        for s in since:
+            if len(s) != 2:
+                raise UserError(f"invalid {cls.fieldname}.since ({s})")
+        return cls(since)
+
+    def pred(self, obj):
+        return True
+
+    def where(self):
+        a = Argno()
+        clauses = []
+        args = []
+        for s in self.since:
+            assert len(s) == 2, s
+            clauses.append(a(f"(not (srv_id = ? and seqno <= ?))"))
+            args.extend(s)
+
+        if not clauses:
+            return "", args
+
+        return "where " + " and ".join(clauses), args
+
+
+class AllProjects(AllSpec):
+    fieldname = "projects"
+
+    async def fetch_initial(self, conn):
+        where, args = self.where()
+        query = f"""
+            select
+                srv_id,
+                seqno,
+                version,
+                project,
+                name,
+                "user",
+                submissiontime,
+                authortime,
+                archivetime
+            from projects
+            {where}
+            ORDER BY seqno
+        """
+
+        stmt = await conn.prepare(query)
+
+        records = await stmt.fetch(*args)
+
+        return [mkdict("project", r.items()) for r in records]
+
+
+class AllAccounts(AllSpec):
+    fieldname = "accounts"
+
+    async def fetch_initial(self, conn):
+        where, args = self.where()
+        query = f"""
+            select
+                srv_id,
+                seqno,
+                version,
+                account,
+                "user",
+                name,
+                email,
+                password,
+                submissiontime,
+                authortime,
+                archivetime
+            from accounts
+            {where}
+            ORDER BY seqno
+        """
+
+        stmt = await conn.prepare(query)
+
+        records = await stmt.fetch(*args)
+
+        return [mkdict("account", r.items()) for r in records]
+
+
+class AllUsers(AllSpec):
+    fieldname = "users"
+
+    async def fetch_initial(self, conn):
+        where, args = self.where()
+        query = f"""
+            select
+                srv_id,
+                seqno,
+                version,
+                "user",
+                account,
+                submissiontime,
+                authortime,
+                archivetime
+            from users
+            {where}
+            ORDER BY seqno
+        """
+
+        stmt = await conn.prepare(query)
+
+        records = await stmt.fetch(*args)
+
+        return [mkdict("user", r.items()) for r in records]
+
+
+class AllPermissions(AllSpec):
+    fieldname = "permissions"
+
+    async def fetch_initial(self, conn):
+        where, args = self.where()
+        query = f"""
+            select
+                srv_id,
+                seqno,
+                version,
+                "user",
+                project,
+                kind,
+                enable,
+                author,
+                submissiontime,
+                authortime,
+                archivetime
+            from users
+            {where}
+            ORDER BY seqno
+        """
+
+
+        stmt = await conn.prepare(query)
+
+        records = await stmt.fetch(*args)
+
+        return [mkdict("user", r.items()) for r in records]
+
+
 class SubscriptionSpec:
     fieldname = ""
     matchables = ()
@@ -284,117 +435,6 @@ class SubscriptionSpec:
             return "", args
 
         return "where " + " and ".join(clauses), args
-
-
-class ProjectsSpec(SubscriptionSpec):
-    @classmethod
-    def from_json(cls, obj):
-        if obj is None:
-            return None
-        since = obj.get("since", [])
-        match = obj["match"]
-        value = obj.get("value")
-        # validate
-        for s in since:
-            if len(s) != 2:
-                raise UserError(f"invalid projects.since ({s})")
-        if match not in ("*", "project"):
-            raise UserError(f"invalid projects.match ({match})")
-        if value is None and match != "*":
-            raise UserError(f"invalid projects.match ({match})")
-        return cls(since, match, value)
-
-    def pred(self, obj):
-        if self.match == "*":
-            return True
-        return obj[self.match] == self.value
-
-    async def fetch_initial(self, conn):
-        where, args = self.where()
-        query = f"""
-            select
-                srv_id,
-                seqno,
-                version,
-                project,
-                name,
-                "user",
-                submissiontime,
-                authortime,
-                archivetime
-            from projects
-            {where}
-            ORDER BY seqno
-        """
-
-        stmt = await conn.prepare(query)
-
-        records = await stmt.fetch(*args)
-
-        return [mkdict("project", r.items()) for r in records]
-
-
-class UsersSpec(SubscriptionSpec):
-    fieldname = "users"
-    # TODO: users doesn't even have a project field!
-    matchables = ("project", "user")
-
-    async def fetch_initial(self, conn):
-        where, args = self.where()
-        query = f"""
-            select
-                srv_id,
-                seqno,
-                version,
-                "user",
-                name,
-                -- email,
-                -- password,
-                submissiontime,
-                authortime,
-                archivetime
-            from users
-            {where}
-            ORDER BY seqno
-        """
-
-        stmt = await conn.prepare(query)
-
-        records = await stmt.fetch(*args)
-
-        return [mkdict("user", r.items()) for r in records]
-
-
-class PermissionsSpec(SubscriptionSpec):
-    fieldname = "permissions"
-    matchables = ("project", "user")
-
-    async def fetch_initial(self, conn):
-        where, args = self.where()
-        query = f"""
-            select
-                srv_id,
-                seqno,
-                version,
-                "user",
-                project,
-                kind,
-                enable,
-                author,
-                submissiontime,
-                authortime,
-                archivetime
-            from users
-            {where}
-            ORDER BY seqno
-        """
-
-
-        stmt = await conn.prepare(query)
-
-        records = await stmt.fetch(*args)
-
-        return [mkdict("user", r.items()) for r in records]
 
 
 class EntriesSpec(SubscriptionSpec):
@@ -493,9 +533,10 @@ class Subscription:
     def __init__(self, w, mux_id, obj):
         self.w = w
         self.mux_id = mux_id
-        self.projects = ProjectsSpec.from_json(obj.get("projects"))
-        self.users = UsersSpec.from_json(obj.get("users"))
-        self.permissions = PermissionsSpec.from_json(obj.get("permissions"))
+        self.projects = AllProjects.from_json(obj.get("projects"))
+        self.accounts = AllAccounts.from_json(obj.get("accounts"))
+        self.users = AllUsers.from_json(obj.get("users"))
+        self.permissions = AllPermissions.from_json(obj.get("permissions"))
         self.entries = EntriesSpec.from_json(obj.get("entries"))
         self.topics = TopicsSpec.from_json(obj.get("topics"))
         self.comments = CommentsSpec.from_json(obj.get("comments"))
@@ -505,12 +546,14 @@ class Subscription:
         self.early_streaming_results = []
 
         self.specmap = {
-            "projects": self.projects,
-            "users": self.users,
-            "permissions": self.permissions,
+            "project": self.projects,
+            "account": self.accounts,
+            "user": self.users,
+            "permission": self.permissions,
             "entry": self.entries,
             "topic": self.topics,
             "comment": self.comments,
+            "session": None,
         }
 
     def put(self, obj):

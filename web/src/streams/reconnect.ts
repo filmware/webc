@@ -61,6 +61,7 @@ class Since {
     this.since = {
       project: {},
       user: {},
+      account: {},
       permission: {},
       entry: {},
       topic: {},
@@ -72,6 +73,9 @@ class Since {
     });
     spec.users?.since?.forEach((x) => {
       this.since.user[x[0]] = x[1];
+    });
+    spec.accounts?.since?.forEach((x) => {
+      this.since.account[x[0]] = x[1];
     });
     spec.permissions?.since?.forEach((x) => {
       this.since.permission[x[0]] = x[1];
@@ -107,6 +111,7 @@ class Since {
     const out: SubscriptionSpec = {};
     if (spec.projects) out.projects = { ...spec.projects, since: this.mkSince(this.since.project) };
     if (spec.users) out.users = { ...spec.users, since: this.mkSince(this.since.user) };
+    if (spec.accounts) out.accounts = { ...spec.accounts, since: this.mkSince(this.since.account) };
     if (spec.permissions)
       out.permissions = {
         ...spec.permissions,

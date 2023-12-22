@@ -3,6 +3,8 @@ import {
   FWClient,
   FWSubscription,
   FWFetch,
+  FWProjects,
+  FWUserAccounts,
   FWCommentsResult,
   FWComments,
   FWTopicsResult,
@@ -18,13 +20,13 @@ class Demo {
     client?: FWClient;
     advancer: Advancer;
 
-    sub?: FWSubscription = null;
+    sub?: FWSubscription;
 
     // state
     connected: boolean = false;
-    project?: string = null;
-    topic?: string = null;
-    report?: string = null;
+    project?: string;
+    topic?: string;
+    report?: string;
 
     logging_in: boolean = false;
     finding_project: boolean = false;
@@ -35,8 +37,10 @@ class Demo {
     stream_started: boolean = false;
     want_render: boolean = false;
 
-    comments?: FWCommentsResult = null;
-    topics?: FWTopicsResult = null;
+    projects?: UuidRecord<FWProject>;
+    ua?: UuidRecord<FWUserAccount>;
+    comments?: FWCommentsResult;
+    topics?: FWTopicsResult;
 
     constructor(){
         this.advancer = new Advancer(this, this.advanceUp, this.advanceDn);
@@ -152,21 +156,33 @@ class Demo {
 
         if(!this.stream_started){
             this.stream_started = true;
-            // now stream comments from the topic we found
+            // stream projects
+            let projectsStore = new FWProjects(this.client);
+            projectsStore.observable.subscribe((result) => {
+              this.projects = result;
+              this.want_render = true;
+              this.advancer.schedule(null);
+            });
+            // stream useraccounts
+            let uaStore = new FWUserAccounts(this.client);
+            uaStore.observable.subscribe((result) => {
+                this.ua = result;
+                this.want_render = true;
+                this.advancer.schedule(null);
+            });
+            // stream comments
             let commentsStore = new FWComments(
-                this.client, {"match": "topic", "value": this.topic}
+                this.client, uaStore, {"match": "topic", "value": this.topic}
             );
-            // for now, we'll just print stuff to the console
             commentsStore.observable.subscribe((result) => {
                 this.comments = result;
                 this.want_render = true;
                 this.advancer.schedule(null);
             });
-            // also stream all topics
+            // stream topics
             let topicsStore = new FWTopics(
                 this.client, {"match": "project", "value": this.project}
             );
-            // for now, we'll just print stuff to the console
             topicsStore.observable.subscribe((result) => {
                 this.topics = result;
                 this.want_render = true;
@@ -174,7 +190,7 @@ class Demo {
             });
         }
 
-        if(this.comments && this.topics && this.want_render){
+        if(this.projects && this.ua && this.comments && this.topics && this.want_render){
             this.want_render = false;
             this.render();
         }
@@ -184,18 +200,23 @@ class Demo {
         let out = "";
         out += "\x1b[2J\x1b[1;1H";
         out += `CONNECTED: \x1b[93m${this.connected}\x1b[m\n`;
+        out += "PROJECTS:\n";
+        Object.entries(this.projects).forEach(([uuid, proj]) => {
+          const id = uuid.substring(0, 8);
+          const name = proj.name.substring(0, 40);
+          out += `  ${id}: ${name}\n`;
+        });
         out += "TOPICS:\n";
         this.topics.bySubmit.map(
             (uuid) => this.topics.topics[uuid]
         ).forEach((t) => {
             const id = t.uuid.substring(0, 8);
             const when = t.submissiontime;
-            const name = t.name.substring(0,40);
+            const name = t.name.substring(0, 40);
             out += `  ${id}:${when}: ${name}\n`;
         });
-        out += "\n";
-        out += `\nCOMMENTS (${this.topic}):\n`;
-        out += printComments(this.comments.comments, this.comments.topLevels, "  ");
+        out += `COMMENTS (${this.topic}):\n`;
+        out += printComments(this.ua, this.comments.comments, this.comments.topLevels, "  ");
         process.stdout.write(out);
     }
 
@@ -206,15 +227,16 @@ class Demo {
 }
 
 function printComments(
-    all: UuidRecord<FWComment>, uuids: Uuid[], indent: string = ""
+    ua: UuidRecord<FWUserAccount>, all: UuidRecord<FWComment>, uuids: Uuid[], indent: string = ""
 ): string {
     let out = "";
     uuids.map((uuid) => all[uuid]).forEach((c) => {
         const edit = c.edittime ? "*" : "";
-        const id = c.uuid.substring(0, 8);
+        const name = ua[c.user].name;
+        const id = c.uuid.substring(0, 4);
         const text = c.body.substring(0, 40);
-        out += `${indent}${id}: ${edit}${text}\n`;
-        out += printComments(all, c.children, indent + "  ");
+        out += `${indent}${name}(${id}): ${edit}${text}\n`;
+        out += printComments(ua, all, c.children, indent + "  ");
     });
     return out;
 }

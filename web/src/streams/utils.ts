@@ -12,7 +12,7 @@ export type RecvSuccess = {
   user: Uuid;
   session: string;
   token: string;
-  expirty: Date;
+  expiry: Date;
 };
 
 export type RecvFailure = {
@@ -24,6 +24,38 @@ type RecvMsgCommon = {
   srv_id: number;
   seqno: number;
   mux_id: number;
+};
+
+export type RecvProject = RecvMsgCommon & {
+  type: 'project';
+  version: Uuid;
+  project: Uuid;
+  name: string;
+  user: Uuid;
+  submissiontime: Date;
+  authortime: Date;
+  archivetime: unknown;
+};
+
+export type RecvAccount = RecvMsgCommon & {
+  type: 'account';
+  version: Uuid;
+  account: Uuid;
+  user: Uuid;
+  name: Uuid;
+  submissiontime: Date;
+  authortime: Date;
+  archivetime: unknown;
+};
+
+export type RecvUser = RecvMsgCommon & {
+  type: 'user';
+  version: Uuid;
+  user: Uuid;
+  account: Uuid;
+  submissiontime: Date;
+  authortime: Date;
+  archivetime: Date;
 };
 
 export type RecvComment = RecvMsgCommon & {
@@ -53,11 +85,15 @@ export type RecvTopic = RecvMsgCommon & {
   links: unknown;
 };
 
-export type RecvMsg = RecvComment | RecvTopic;
+export type RecvMsg = RecvProject | RecvAccount | RecvUser | RecvComment | RecvTopic;
 export type RecvMsgOrSync = RecvMsg | RecvSync;
 export type RecvMsgAll = RecvMsgOrSync | RecvSuccess | RecvFailure;
 
 export type SubscriptionSince = number[][];
+
+export type AllSubscriptionItem = {
+  since: SubscriptionSince;
+};
 
 export type SubscriptionItem = {
   since: SubscriptionSince;
@@ -66,8 +102,9 @@ export type SubscriptionItem = {
 };
 
 export type SubscriptionSpec = {
-  projects?: SubscriptionItem;
-  users?: SubscriptionItem;
+  projects?: AllSubscriptionItem;
+  users?: AllSubscriptionItem;
+  accounts?: AllSubscriptionItem;
   permissions?: SubscriptionItem;
   entries?: SubscriptionItem;
   topics?: SubscriptionItem;

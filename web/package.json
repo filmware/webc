@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "vite",
+    "tsc": "tsc",
     "build": "tsc && vite build",
     "prettier": "prettier",
     "eslint": "eslint",

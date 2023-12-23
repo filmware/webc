@@ -179,9 +179,13 @@ type Account = {
   timestamp: Date;
 };
 
-// FWUserAccount is a blend of the user and accounts table, keyed by user uuid.
+/* FWUserAccount is information from the accounts table, keyed by the user uuid.  It is named
+   "User-Account" to remind that:
+     - looking up account by UUID isn't normally correct; this is a specific simplification we are
+       offering the UI
+     - there is a cost to this simplification, which is that a given FWUserAccount might be returned
+       by multiple user uuids */
 export type FWUserAccount = {
-  user: Uuid;
   account: Uuid;
   name: string;
 };
@@ -253,9 +257,9 @@ export class FWUserAccounts {
 
     // apply name change
     const updates: Uuid[] = [];
-    Object.values(this.ua).forEach((ua) => {
-      if (ua.account === a.uuid) updates.push(ua.user);
-    });
+    for (const uuid in this.ua) {
+      if (this.ua[uuid].account === a.uuid) updates.push(uuid);
+    }
     updates.forEach((uuid) => {
       this.ua[uuid] = { ...this.ua[uuid], name: a.name };
     });
@@ -295,7 +299,6 @@ export class FWUserAccounts {
     if (prev && prev.account === u.account) return false;
 
     this.ua[u.uuid] = {
-      user: u.uuid,
       account: u.account,
       name: this.accounts[u.account].name,
     };

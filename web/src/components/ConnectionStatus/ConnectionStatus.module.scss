@@ -5,129 +5,93 @@
   top: 0;
   width: 48px;
 
-  .plugBlink {
-    animation: disconnectBlink 2000ms linear 200ms;
-    color: var(--color-error-active);
-    opacity: 0;
-  }
-  .plugFemale,
-  .plugMale {
-    color: var(--color-error-active);
-    height: 48px;
+  .logo {
+    left: 12px;
     position: absolute;
-    transform-origin: top left;
+    top: 12px;
+
+    svg {
+      color: var(--color-primary);
+      transition: color 1s linear;
+    }
+  }
+  .dot {
+    background-color: var(--green5);
+    border-radius: 4px;
+    height: 8px;
+    left: 50%;
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+  }
+  .blast {
+    background-color: var(--red5);
+    border-radius: 24px;
+    height: 48px;
+    left: 50%;
+    opacity: 0;
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%) scale(0%);
     width: 48px;
-  }
-  .plugFemale {
-    animation: disconnectFemale 200ms ease-out;
-    transform: rotate(-15deg);
-  }
-  .plugMale {
-    animation: disconnectMale 200ms ease-out;
-    transform: rotate(15deg);
   }
 }
 .base.connected {
-  .plugBlink {
-    animation: none;
-    opacity: 0;
+  .dot {
+    animation: connectedDot 4000ms ease-in-out;
+    animation-iteration-count: infinite;
   }
-  .plugFemale,
-  .plugMale {
-    color: var(--color-primary);
-    transform: rotate(0deg);
+}
+.base.disconnected {
+  .dot {
+    animation: disconnectedDot 8000ms ease-in-out;
+    animation-iteration-count: infinite;
   }
-  .plugFemale {
-    animation: connectFemale 200ms ease-in;
-  }
-  .plugMale {
-    animation: connectMale 200ms ease-in;
+  .blast {
+    animation: disconnectedBlast 2000ms ease-in-out;
+    animation-iteration-count: infinite;
   }
 }
 .base.onDark {
-  .plugBlink,
-  .plugFemale,
-  .plugMale {
-    color: var(--color-bg-base);
+  .logo {
+    svg {
+      color: var(--color-bg-base);
+    }
   }
 }
 
-@keyframes connectMale {
-  from {
-    color: var(--color-error-active);
-    transform: rotate(15deg);
-  }
-  to {
-    color: var(--color-primary);
-    transform: rotate(0deg);
-  }
-}
-
-@keyframes connectFemale {
-  from {
-    color: var(--color-error-active);
-    transform: rotate(-15deg);
-  }
-  to {
-    color: var(--color-primary);
-    transform: rotate(0deg);
-  }
-}
-
-@keyframes disconnectBlink {
+@keyframes connectedDot {
   0% {
-    opacity: 0;
-  }
-  10% {
-    opacity: 0.5;
-  }
-  20% {
-    opacity: 0;
-  }
-  30% {
-    opacity: 0.5;
-  }
-  40% {
-    opacity: 0;
+    background-color: var(--green5);
   }
   50% {
-    opacity: 0.5;
+    background-color: var(--purple5);
   }
-  60% {
-    opacity: 0;
+  100% {
+    background-color: var(--green5);
   }
-  70% {
-    opacity: 0.5;
+}
+
+@keyframes disconnectedDot {
+  0% {
+    background-color: var(--red5);
   }
-  80% {
-    opacity: 0;
+  50% {
+    background-color: var(--red3);
   }
-  90% {
-    opacity: 0.5;
+  100% {
+    background-color: var(--red5);
+  }
+}
+
+@keyframes disconnectedBlast {
+  0% {
+    opacity: 0.3;
+    transform: translate(-50%, -50%) scale(0%);
   }
   100% {
     opacity: 0;
-  }
-}
-
-@keyframes disconnectMale {
-  from {
-    color: var(--color-primary);
-    transform: rotate(0deg);
-  }
-  to {
-    color: var(--color-error-active);
-    transform: rotate(15deg);
-  }
-}
-
-@keyframes disconnectFemale {
-  from {
-    color: var(--color-primary);
-    transform: rotate(0deg);
-  }
-  to {
-    color: var(--color-error-active);
-    transform: rotate(-15deg);
+    transform: translate(-50%, -50%) scale(100%);
   }
 }

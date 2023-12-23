@@ -44,7 +44,7 @@ function SignIn() {
         layout="vertical"
         onFinish={handleFormFinish}>
         <div className={css.logo}>
-          <Logo showLabel />
+          <Logo full />
         </div>
         <FormItem<FieldType>
           name="email"

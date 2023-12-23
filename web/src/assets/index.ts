@@ -15,3 +15,4 @@ export { default as PlugMale } from '@/assets/icons/icon-plug-male.svg?react';
 
 // Logo
 export { default as Logo } from '@/assets/logos/logo.svg?react';
+export { default as LogoFull } from '@/assets/logos/logo-full.svg?react';

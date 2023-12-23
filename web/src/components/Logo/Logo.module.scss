@@ -1,16 +1,17 @@
 .base {
   align-items: center;
+  color: var(--color-primary);
   display: inline-flex;
-  gap: 8px;
+  justify-content: center;
 
   svg {
     height: 24px;
     width: 24px;
   }
-  span {
-    font-size: 20px;
-    font-style: italic;
-    font-weight: 700;
-    letter-spacing: 4px;
+}
+.base.full {
+  svg {
+    height: 22px;
+    width: 49px;
   }
 }

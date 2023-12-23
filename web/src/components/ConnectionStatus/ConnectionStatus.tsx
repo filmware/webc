@@ -2,7 +2,7 @@ import { Tooltip } from 'antd';
 import { useObservable } from 'micro-observables';
 import { useMemo } from 'react';
 
-import { PlugBlink, PlugFemale, PlugMale } from '@/assets';
+import Logo from '@/components/Logo';
 import streamStore from '@/stores/stream';
 
 import css from './ConnectionStatus.module.scss';
@@ -14,23 +14,18 @@ function ConnectionStatus() {
   const className = useMemo(() => {
     const classes = [css.base];
     if (isAuthenticated) classes.push(css.onDark);
-    if (status.connected) classes.push(css.connected);
+    classes.push(status.connected ? css.connected : css.disconnected);
     return classes.join(' ');
   }, [isAuthenticated, status.connected]);
 
   return (
     <Tooltip placement="right" title={status.connected ? 'Online' : 'Offline'}>
       <div className={className}>
-        <div className={css.plugFemale}>
-          <PlugFemale />
+        <div className={css.blast} />
+        <div className={css.logo}>
+          <Logo />
         </div>
-        <div className={css.plugMale}>
-          <PlugMale />
-        </div>
-        <div className={css.plugBlink}>
-          <PlugBlink />
-        </div>
-        <div>{status.connected}</div>
+        <div className={css.dot} />
       </div>
     </Tooltip>
   );

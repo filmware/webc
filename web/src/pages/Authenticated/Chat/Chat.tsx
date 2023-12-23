@@ -17,6 +17,7 @@ function Chat() {
   const topicMap = useObservable(streamStore.topicMap);
   const commentList = useObservable(streamStore.commentList);
   const commentMap = useObservable(streamStore.commentMap);
+  const userMap = useObservable(streamStore.userMap);
 
   const topicTitle = useMemo(() => {
     return (topicUuid && topicMap[topicUuid].name) ?? 'Messages';
@@ -33,14 +34,15 @@ function Chat() {
         <div className={css.messages}>
           {commentList.map((uuid) => {
             const comment = commentMap[uuid];
+            const user = userMap[comment.user];
             return (
               <div className={css.message} key={uuid}>
                 <div className={css.avatar}>
-                  <AcronymIcon size="large" value={comment.user} />
+                  <AcronymIcon size="large" value={user.name} />
                 </div>
                 <div className={css.content}>
                   <div className={css.header}>
-                    <span className={css.user}>{comment.user}</span>
+                    <span className={css.user}>{user.name}</span>
                     <span className={css.time}>{timeFormat(comment.authortime)}</span>
                     <div className={css.options}>
                       <Icon name="chat" />

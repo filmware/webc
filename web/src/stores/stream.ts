@@ -6,8 +6,11 @@ import {
   FWComment,
   FWComments,
   FWConnectionWS,
+  FWProject,
+  FWProjects,
   FWTopic,
   FWTopics,
+  FWUserAccount,
   FWUserAccounts,
   Uuid,
   UuidRecord,
@@ -15,25 +18,19 @@ import {
 import { getUTCString } from '@/utils/date';
 import { randomUUID } from '@/utils/string';
 
-type Project = {
-  authortime: string;
-  name: string;
-  project: Uuid;
-  submissiontime: string;
-  user: Uuid;
-  version: Uuid;
-};
-
 class StreamStore {
   #connection: FWConnectionWS;
   #client?: FWClient;
   #userAccountsStore?: FWUserAccounts;
+  #projectStore?: FWProjects;
   #topicStore?: FWTopics;
   #commentStore?: FWComments;
 
   status: Observable<ConnectionStatus>;
   authenticated = observable(false);
-  projectList = observable<Project[]>([]);
+  userMap = observable<UuidRecord<FWUserAccount>>({});
+  projectList = observable<Uuid[]>([]);
+  projectMap = observable<UuidRecord<FWProject>>({});
   projectUuid = observable<string | undefined>(undefined);
   topicList = observable<Uuid[]>([]);
   topicMap = observable<UuidRecord<FWTopic>>({});
@@ -49,16 +46,21 @@ class StreamStore {
 
   async login(email: string, password: string): Promise<void> {
     this.#client = await this.#connection.login(email, password);
-    this.#userAccountsStore = new FWUserAccounts(this.#client);
-
     this.authenticated.set(true);
 
-    const fetch = this.#client.fetch({ projects: { match: '*' } });
-    fetch.onFetch = (payload) => {
-      const projectPayload = payload as unknown as Project[];
-      this.projectList.set(projectPayload);
-      if (projectPayload.length !== 0) this.setProjectUuid(projectPayload[0].project);
-    };
+    this.#userAccountsStore = new FWUserAccounts(this.#client);
+    this.#userAccountsStore.observable.subscribe((payload) => {
+      this.userMap.set(payload);
+    });
+
+    this.#projectStore = new FWProjects(this.#client);
+    this.#projectStore.observable.subscribe((payload) => {
+      const projectUuidList = Object.values(payload)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((p) => p.uuid);
+      this.projectMap.set(payload);
+      this.projectList.set(projectUuidList);
+    });
   }
 
   async logout() {

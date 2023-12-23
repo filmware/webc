@@ -19,6 +19,7 @@ const USER_MENU = [
 function NavBar() {
   const status = useObservable(streamStore.status);
   const projectList = useObservable(streamStore.projectList);
+  const projectMap = useObservable(streamStore.projectMap);
   const projectUuid = useObservable(streamStore.projectUuid);
   const navigate = useNavigate();
 
@@ -28,23 +29,25 @@ function NavBar() {
     return classes.join(' ');
   }, [status.connected]);
 
-  const project = useMemo(
-    () => projectList.find((p) => p.project === projectUuid),
-    [projectList, projectUuid],
-  );
+  const selectedProject = useMemo(() => {
+    return projectUuid ? projectMap[projectUuid] : undefined;
+  }, [projectMap, projectUuid]);
 
   const projectMenu = useMemo(
     () =>
-      projectList.map((p) => ({
-        key: p.project,
-        label: (
-          <>
-            <AcronymIcon value={p.name} />
-            <span>{p.name}</span>
-          </>
-        ),
-      })),
-    [projectList],
+      projectList.map((uuid) => {
+        const project = projectMap[uuid];
+        return {
+          key: uuid,
+          label: (
+            <>
+              <AcronymIcon value={project.name} />
+              <span>{project.name}</span>
+            </>
+          ),
+        };
+      }),
+    [projectList, projectMap],
   );
 
   const userMenu = useMemo(
@@ -81,7 +84,7 @@ function NavBar() {
       <section className={css.top}>
         <NavBarItem key="project">
           <NavBarSelect menu={projectMenu} onSelect={(key) => streamStore.setProjectUuid(key)}>
-            <AcronymIcon value={project?.name ?? ''} />
+            <AcronymIcon value={selectedProject?.name ?? ''} />
           </NavBarSelect>
         </NavBarItem>
         <NavBarItem icon="home" key="home" to="/app" />

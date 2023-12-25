@@ -1,6 +1,8 @@
 // @ts-nocheck: TS2307 allow `?react` suffix needed for SVG imports
 
 // Icons
+export { default as Add } from '@/assets/icons/icon-add.svg?react';
+export { default as AddOn } from '@/assets/icons/icon-add-on.svg?react';
 export { default as Bell } from '@/assets/icons/icon-bell.svg?react';
 export { default as BellOn } from '@/assets/icons/icon-bell-on.svg?react';
 export { default as Chat } from '@/assets/icons/icon-chat.svg?react';

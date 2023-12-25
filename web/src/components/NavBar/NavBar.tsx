@@ -91,6 +91,7 @@ function NavBar() {
         <NavBarItem icon="chat" key="chat" to="/chat" />
       </section>
       <section className={css.bottom}>
+        <NavBarItem icon="add" key="add" />
         <NavBarItem icon="bell" key="alerts" />
         <NavBarItem key="project">
           <NavBarSelect menu={userMenu} placement="top" onSelect={handleUserMenuSelect}>

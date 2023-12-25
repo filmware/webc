@@ -4,6 +4,7 @@
   position: absolute;
   top: 0;
   width: 48px;
+  z-index: 16384;
 
   .logo {
     left: 12px;
@@ -16,7 +17,7 @@
     }
   }
   .dot {
-    background-color: var(--green5);
+    background-color: var(--green6);
     border-radius: 4px;
     height: 8px;
     left: 50%;
@@ -26,7 +27,7 @@
     width: 8px;
   }
   .blast {
-    background-color: var(--red5);
+    background-color: var(--red6);
     border-radius: 24px;
     height: 48px;
     left: 50%;
@@ -63,25 +64,25 @@
 
 @keyframes connectedDot {
   0% {
-    background-color: var(--green5);
+    background-color: var(--green6);
   }
   50% {
-    background-color: var(--purple5);
+    background-color: var(--green4);
   }
   100% {
-    background-color: var(--green5);
+    background-color: var(--green6);
   }
 }
 
 @keyframes disconnectedDot {
   0% {
-    background-color: var(--red5);
+    background-color: var(--red6);
   }
   50% {
-    background-color: var(--red3);
+    background-color: var(--red4);
   }
   100% {
-    background-color: var(--red5);
+    background-color: var(--red6);
   }
 }
 

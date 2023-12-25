@@ -1,0 +1,41 @@
+.base {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  justify-content: center;
+  width: 100%;
+
+  .content {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: calc(16px * var(--density));
+    max-width: 480px;
+  }
+  .options {
+    display: flex;
+    flex-direction: column;
+    gap: calc(8px * var(--density));
+    width: 100%;
+  }
+  .option {
+    border: dashed var(--line-width) var(--color-border);
+    border-radius: var(--border-radius);
+    box-sizing: border-box;
+    display: flex;
+    flex: 1 1 50%;
+    flex-direction: column;
+    gap: calc(8px * var(--density));
+    padding: calc(16px * var(--density));
+    width: 100%;
+  }
+  .option:hover {
+    border: solid var(--line-width) var(--color-primary);
+  }
+}
+.title {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}

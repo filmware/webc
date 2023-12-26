@@ -10,6 +10,8 @@ export const ICON_NAME_MAP: Record<
   bellOn: SVG.BellOn,
   chat: SVG.Chat,
   chatOn: SVG.ChatOn,
+  clip: SVG.Clip,
+  clipOn: SVG.ClipOn,
   gear: SVG.Gear,
   gearOn: SVG.GearOn,
   home: SVG.Home,

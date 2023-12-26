@@ -88,6 +88,7 @@ function NavBar() {
           </NavBarSelect>
         </NavBarItem>
         <NavBarItem icon="home" key="home" to="/app" />
+        <NavBarItem icon="clip" key="clip" to="/clip" />
         <NavBarItem icon="chat" key="chat" to="/chat" />
       </section>
       <section className={css.bottom}>

@@ -1,0 +1,33 @@
+.base {
+  display: flex;
+  height: 100%;
+
+  aside {
+    background-color: #f5f2ff;
+    display: flex;
+    flex: 0 0 var(--sidebar-width);
+    flex-direction: column;
+  }
+  main {
+    flex: 1 1 auto;
+  }
+  .header {
+    align-items: center;
+    background-color: #ede8ff;
+    display: flex;
+    flex: 0 0 var(--spacing-9);
+    padding: 0 var(--spacing-4);
+  }
+}
+.base.dark {
+  aside {
+    background-color: #291558;
+  }
+  .header {
+    background-color: #1e0f40;
+  }
+  a,
+  a:link {
+    color: #fff;
+  }
+}

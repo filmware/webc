@@ -33,7 +33,7 @@ function useTheme() {
       let value = token[key as keyof typeof token];
 
       // Numeric types are designed for CSS-in-JS, so numbers do not have a `px` suffix for size.
-      if (typeof value === 'number') value = `${value}px`;
+      if (typeof value === 'number' && !/lineHeight/i.test(key)) value = `${value}px`;
 
       // Write token value out to CSS variables so our theme can use them directly in our CSS modules.
       if (value) document.documentElement.style.setProperty(cssVarKey, value.toString());

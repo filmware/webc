@@ -17,6 +17,8 @@ class ThemeStore {
   #userMode: WritableObservable<Mode> = observable('system');
   #systemMode: WritableObservable<Mode> = observable('system');
 
+  userMode = this.#userMode.readOnly();
+
   constructor(localStorage: LocalStorageStore) {
     this.#localStorage = localStorage;
     const storedThemeMode = this.#localStorage.getPath<Mode>(STORAGE_KEY_THEME_MODE, ioMode);

@@ -6,7 +6,8 @@ import AcronymIcon from '@/components/AcronymIcon';
 import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import NavBarSelect from '@/components/NavBarSelect';
-import { appPaths, authPaths } from '@/routes';
+import { appPaths } from '@/routes';
+import drawerStore from '@/stores/drawer';
 import streamStore from '@/stores/stream';
 
 import css from './NavBar.module.scss';
@@ -68,7 +69,7 @@ function NavBar() {
     (key: string) => {
       switch (key) {
         case 'settings':
-          navigate(authPaths.settings());
+          drawerStore.setSettings(true);
           break;
         case 'sign-out':
           navigate(appPaths.signOut());
@@ -88,7 +89,7 @@ function NavBar() {
           </NavBarSelect>
         </NavBarItem>
         <NavBarItem icon="home" key="home" to="/app" />
-        <NavBarItem icon="clip" key="clip" to="/clip" />
+        <NavBarItem icon="clip" key="clips" to="/clips" />
         <NavBarItem icon="chat" key="chat" to="/chat" />
       </section>
       <section className={css.bottom}>

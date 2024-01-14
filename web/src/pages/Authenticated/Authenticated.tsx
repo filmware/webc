@@ -1,15 +1,18 @@
 import { useObservable } from 'micro-observables';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import NavBar from '@/components/NavBar';
+import DrawerSettings from '@/drawers/DrawerSettings';
 import DrawerWelcome from '@/drawers/DrawerWelcome';
 import AuthRouter from '@/routes/AuthRouter';
+import drawerStore from '@/stores/drawer';
 import streamStore from '@/stores/stream';
 
 import css from './Authenticated.module.scss';
 
 function Authenticated() {
-  const [isWelcomeOpen, setIsWelcomeOpen] = useState(false);
+  const isWelcomeOpen = useObservable(drawerStore.welcome);
+  const isSettingsOpen = useObservable(drawerStore.settings);
   const projectUuid = useObservable(streamStore.projectUuid);
 
   const className = useMemo(() => {
@@ -18,7 +21,7 @@ function Authenticated() {
   }, []);
 
   useEffect(() => {
-    if (!projectUuid) setIsWelcomeOpen(true);
+    if (!projectUuid) drawerStore.setWelcome(true);
   }, [projectUuid]);
 
   return (
@@ -29,7 +32,8 @@ function Authenticated() {
           <AuthRouter />
         </div>
       </div>
-      <DrawerWelcome open={isWelcomeOpen} onClose={() => setIsWelcomeOpen(false)} />
+      <DrawerWelcome open={isWelcomeOpen} onClose={() => drawerStore.setWelcome(false)} />
+      <DrawerSettings open={isSettingsOpen} onClose={() => drawerStore.setSettings(false)} />
     </>
   );
 }

@@ -2,7 +2,7 @@ nav {
   background-image: linear-gradient(to bottom, transparent, var(--color-primary));
   color: #fff;
   display: flex;
-  flex: 0 0 var(--navbar-width);
+  flex: 0 0 var(--spacing-9);
   flex-direction: column;
   position: relative;
 
@@ -25,13 +25,13 @@ nav {
     & > div {
       align-items: center;
       display: inline-flex;
-      height: var(--navbar-width);
+      height: var(--spacing-9);
       justify-content: center;
-      width: var(--navbar-width);
+      width: var(--spacing-9);
     }
   }
   section.logo {
-    flex: 0 0 var(--topbar-height);
+    flex: 0 0 var(--spacing-9);
 
     svg {
       height: 24px;

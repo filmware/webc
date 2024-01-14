@@ -2,6 +2,7 @@ import { ExclamationCircleFilled } from '@ant-design/icons';
 import { Modal as AntdModal, Button } from 'antd';
 import {
   createContext,
+  CSSProperties,
   Dispatch,
   PropsWithChildren,
   ReactNode,
@@ -10,8 +11,6 @@ import {
   useContext,
   useState,
 } from 'react';
-
-import Spin from '@/components/Spin';
 
 import css from './Modal.module.scss';
 
@@ -40,6 +39,7 @@ export type ModalProps = {
   onClose?: () => Promise<void> | void;
   showCancel?: boolean;
   size?: Size;
+  style?: CSSProperties;
   title?: ReactNode;
 };
 
@@ -66,6 +66,7 @@ function Modal({
   okParams,
   onClose,
   size = 'small',
+  style,
   title,
 }: PropsWithChildren<ModalProps>) {
   const [isWaiting, setIsWaiting] = useState(false);
@@ -100,58 +101,57 @@ function Modal({
    * https://stackoverflow.com/a/65641605/5402432
    */
   return (
-    <Spin spinning={isWaiting}>
-      <AntdModal
-        afterClose={onClose}
-        closable={!isWaiting}
-        footer={
-          <div className={css.footer}>
-            {cancel && (
-              <Button disabled={isWaiting} type="link" onClick={handleCancel}>
-                {cancelText}
-              </Button>
+    <AntdModal
+      afterClose={onClose}
+      closable={!isWaiting}
+      footer={
+        <div className={css.footer}>
+          {cancel && (
+            <Button disabled={isWaiting} type="link" onClick={handleCancel}>
+              {cancelText}
+            </Button>
+          )}
+          {altOkParams && (
+            <Button
+              danger={danger}
+              disabled={altOkParams.disabled}
+              loading={isWaiting}
+              onClick={handleOk(altOkParams)}>
+              {altOkParams?.text || DEFAULT_ALT_OK_TEXT}
+            </Button>
+          )}
+          {okParams && (
+            <Button
+              danger={danger}
+              disabled={okParams.disabled}
+              loading={isWaiting}
+              type="primary"
+              onClick={handleOk(okParams)}>
+              {okParams?.text || DEFAULT_OK_TEXT}
+            </Button>
+          )}
+        </div>
+      }
+      forceRender
+      key={key}
+      maskClosable={!isWaiting}
+      open={modalContext.isOpen}
+      style={style}
+      title={
+        title && (
+          <div className={css.title}>
+            {danger && (
+              <ExclamationCircleFilled style={{ color: 'var(--color-error)', fontSize: 24 }} />
             )}
-            {altOkParams && (
-              <Button
-                danger={danger}
-                disabled={altOkParams.disabled}
-                loading={isWaiting}
-                onClick={handleOk(altOkParams)}>
-                {altOkParams?.text || DEFAULT_ALT_OK_TEXT}
-              </Button>
-            )}
-            {okParams && (
-              <Button
-                danger={danger}
-                disabled={okParams.disabled}
-                loading={isWaiting}
-                type="primary"
-                onClick={handleOk(okParams)}>
-                {okParams?.text || DEFAULT_OK_TEXT}
-              </Button>
-            )}
+            {title}
           </div>
-        }
-        forceRender
-        key={key}
-        maskClosable={!isWaiting}
-        open={modalContext.isOpen}
-        title={
-          title && (
-            <div className={css.title}>
-              {danger && (
-                <ExclamationCircleFilled style={{ color: 'var(--color-error)', fontSize: 24 }} />
-              )}
-              {title}
-            </div>
-          )
-        }
-        width={SIZE_TO_WIDTH[size]}
-        onCancel={handleCancel}
-        onOk={okParams && handleOk(okParams)}>
-        {children}
-      </AntdModal>
-    </Spin>
+        )
+      }
+      width={SIZE_TO_WIDTH[size]}
+      onCancel={handleCancel}
+      onOk={okParams && handleOk(okParams)}>
+      {children}
+    </AntdModal>
   );
 }
 

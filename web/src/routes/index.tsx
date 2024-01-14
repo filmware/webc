@@ -2,10 +2,8 @@ import { RouteProps } from 'react-router-dom';
 
 import Authenticated from '@/pages/Authenticated/Authenticated';
 import Chat from '@/pages/Authenticated/Chat';
-import Clips from '@/pages/Authenticated/Home/Clips';
+import Clips from '@/pages/Authenticated/Clips';
 import Home from '@/pages/Authenticated/Home/Home';
-import Overview from '@/pages/Authenticated/Home/Overview';
-import Settings from '@/pages/Authenticated/Settings/Settings';
 import SignIn from '@/pages/SignIn/SignIn';
 import SignOut from '@/pages/SignOut/SignOut';
 
@@ -46,8 +44,8 @@ export const appRoutes: RouteConfig[] = [
 
 export const authPaths = {
   chat: () => 'chat',
-  home: () => 'app/*',
-  settings: () => 'settings',
+  clips: () => 'clips',
+  home: () => 'app',
 };
 
 export const authRoutes: RouteConfig[] = [
@@ -62,36 +60,8 @@ export const authRoutes: RouteConfig[] = [
     path: authPaths.chat(),
   },
   {
-    element: <Settings />,
-    id: 'settings',
-    path: authPaths.settings(),
-  },
-  // {
-  //   id: 'catch-all',
-  //   path: '*',
-  //   redirect: authPaths.home(),
-  // },
-];
-
-export const homePaths = {
-  overview: () => 'overview',
-  clips: () => 'clips',
-};
-
-export const homeRoutes: RouteConfig[] = [
-  {
-    element: <Overview />,
-    id: 'overview',
-    path: homePaths.overview(),
-  },
-  {
     element: <Clips />,
     id: 'clips',
-    path: homePaths.clips(),
+    path: authPaths.clips(),
   },
-  // {
-  //   id: 'catch-all',
-  //   path: '*',
-  //   redirect: homePaths.overview(),
-  // },
 ];

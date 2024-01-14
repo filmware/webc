@@ -2,8 +2,18 @@
   --density: 1;
   --navbar-width: 48px;
   --sidebar-width: 280px;
-  --topbar-height: 48px;
-  background-color: var(--color-bg);
+  --line-width: calc(var(--density) * 1px);
+  --spacing-0: calc(var(--density) * 1px);
+  --spacing-1: calc(var(--density) * 2px);
+  --spacing-2: calc(var(--density) * 4px);
+  --spacing-3: calc(var(--density) * 8px);
+  --spacing-4: calc(var(--density) * 12px);
+  --spacing-5: calc(var(--density) * 16px);
+  --spacing-6: calc(var(--density) * 20px);
+  --spacing-7: calc(var(--density) * 24px);
+  --spacing-8: calc(var(--density) * 32px);
+  --spacing-9: calc(var(--density) * 48px);
+  background-color: var(--color-bg-base);
   box-sizing: border-box;
   color: var(--color-text);
   color-scheme: light dark;
@@ -31,30 +41,6 @@ h4,
 h5,
 h6 {
   margin: 0;
-}
-h1 {
-  font-size: 28px;
-  line-height: 48px;
-}
-h2 {
-  font-size: 24px;
-  line-height: 44px;
-}
-h3 {
-  font-size: 22px;
-  line-height: 40px;
-}
-h4 {
-  font-size: 20px;
-  line-height: 36px;
-}
-h5 {
-  font-size: 18px;
-  line-height: 30px;
-}
-h6 {
-  font-size: 16px;
-  line-height: 24px;
 }
 ul,
 li {

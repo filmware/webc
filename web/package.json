@@ -25,6 +25,7 @@
   "dependencies": {
     "antd": "^5.12.1",
     "dayjs": "^1.11.10",
+    "events": "^3.3.0",
     "fp-ts": "^2.16.1",
     "io-ts": "^2.2.21",
     "micro-observables": "^1.7.2",

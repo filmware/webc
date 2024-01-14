@@ -1,5 +1,7 @@
+import * as io from 'io-ts';
 import { Observable, observable } from 'micro-observables';
 
+import localStorageStore, { LocalStorageStore } from '@/stores/localStorage';
 import {
   ConnectionStatus,
   FWClient,
@@ -18,7 +20,10 @@ import {
 import { getUTCString } from '@/utils/date';
 import { randomUUID } from '@/utils/string';
 
+const STORAGE_KEY_PROJECT_UUID = 'project-uuid';
+
 class StreamStore {
+  #localStorage: LocalStorageStore;
   #connection: FWConnectionWS;
   #client?: FWClient;
   #userAccountsStore?: FWUserAccounts;
@@ -38,7 +43,9 @@ class StreamStore {
   commentList = observable<Uuid[]>([]);
   commentMap = observable<UuidRecord<FWComment>>({});
 
-  constructor() {
+  constructor(localStorage: LocalStorageStore) {
+    this.#localStorage = localStorage;
+
     this.#connection = new FWConnectionWS('ws://localhost:8080/ws');
     this.#connection.onExpire = () => this.authenticated.set(false);
     this.status = this.#connection.status;
@@ -61,6 +68,9 @@ class StreamStore {
       this.projectMap.set(payload);
       this.projectList.set(projectUuidList);
     });
+
+    const storedProjectUuid = this.#localStorage.getPath<Uuid>(STORAGE_KEY_PROJECT_UUID, io.string);
+    if (storedProjectUuid) this.setProjectUuid(storedProjectUuid);
   }
 
   async logout() {
@@ -74,6 +84,7 @@ class StreamStore {
     if (!this.#client) return;
 
     this.projectUuid.set(uuid);
+    this.#localStorage.setPath(STORAGE_KEY_PROJECT_UUID, uuid, io.string);
 
     this.#topicStore = new FWTopics(this.#client, { match: 'project', value: uuid });
     this.#topicStore.observable.subscribe(({ bySubmit, topics }) => {
@@ -116,4 +127,4 @@ class StreamStore {
   }
 }
 
-export default new StreamStore();
+export default new StreamStore(localStorageStore);

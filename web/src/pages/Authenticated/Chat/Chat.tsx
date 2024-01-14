@@ -5,7 +5,7 @@ import { useCallback, useMemo, useState } from 'react';
 import AcronymIcon from '@/components/AcronymIcon';
 import Icon from '@/components/Icon';
 import Page from '@/components/Page';
-import SideBar from '@/pages/Authenticated/Chat/SideBar';
+import SideBarLayout from '@/components/SideBarLayout';
 import streamStore from '@/stores/stream';
 import { timeFormat } from '@/utils/date';
 
@@ -14,6 +14,7 @@ import css from './Chat.module.scss';
 function Chat() {
   const [inputValue, setInputValue] = useState('');
   const topicUuid = useObservable(streamStore.topicUuid);
+  const topicList = useObservable(streamStore.topicList);
   const topicMap = useObservable(streamStore.topicMap);
   const commentList = useObservable(streamStore.commentList);
   const commentMap = useObservable(streamStore.commentMap);
@@ -28,43 +29,68 @@ function Chat() {
     if (request) request.onFinish = () => setInputValue('');
   }, [inputValue]);
 
+  const sidebar = (
+    <>
+      <Input allowClear bordered={false} placeholder="Search topics" />
+      <ul>
+        {topicList.map((uuid) => {
+          const topic = topicMap[uuid];
+          const topicClassName = topicUuid === uuid ? css.active : undefined;
+          return (
+            <li
+              className={topicClassName}
+              key={uuid}
+              onClick={() => streamStore.setTopicUuid(uuid)}>
+              <span className={css.icon}>
+                <Icon name="chat" size="small" />
+              </span>
+              <span className={css.label}>{topic.name}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+
   return (
-    <Page sidebar={<SideBar />} title={topicTitle}>
-      <div className={css.base}>
-        <div className={css.messages}>
-          {commentList.map((uuid) => {
-            const comment = commentMap[uuid];
-            const user = userMap[comment.user];
-            return (
-              <div className={css.message} key={uuid}>
-                <div className={css.avatar}>
-                  <AcronymIcon size="large" value={user.name} />
-                </div>
-                <div className={css.content}>
-                  <div className={css.header}>
-                    <span className={css.user}>{user.name}</span>
-                    <span className={css.time}>{timeFormat(comment.authortime)}</span>
-                    <div className={css.options}>
-                      <Icon name="chat" />
-                    </div>
+    <SideBarLayout sidebar={sidebar} title="Chat">
+      <Page noBodyPadding title={topicTitle}>
+        <div className={css.base}>
+          <div className={css.messages}>
+            {commentList.map((uuid) => {
+              const comment = commentMap[uuid];
+              const user = userMap[comment.user];
+              return (
+                <div className={css.message} key={uuid}>
+                  <div className={css.avatar}>
+                    <AcronymIcon size="large" value={user.name} />
                   </div>
-                  <div className={css.body}>{comment.body}</div>
+                  <div className={css.content}>
+                    <div className={css.header}>
+                      <span className={css.user}>{user.name}</span>
+                      <span className={css.time}>{timeFormat(comment.authortime)}</span>
+                      <div className={css.options}>
+                        <Icon name="chat" />
+                      </div>
+                    </div>
+                    <div className={css.body}>{comment.body}</div>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+          <div className={css.input}>
+            <Input
+              allowClear
+              placeholder="Enter a message"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onPressEnter={handleInputPressEnter}
+            />
+          </div>
         </div>
-        <div className={css.input}>
-          <Input
-            allowClear
-            placeholder="Enter a message"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onPressEnter={handleInputPressEnter}
-          />
-        </div>
-      </div>
-    </Page>
+      </Page>
+    </SideBarLayout>
   );
 }
 

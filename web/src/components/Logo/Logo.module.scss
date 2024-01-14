@@ -5,8 +5,8 @@
   justify-content: center;
 
   svg {
-    height: 24px;
-    width: 24px;
+    height: var(--spacing-7);
+    width: var(--spacing-7);
   }
 }
 .base.full {

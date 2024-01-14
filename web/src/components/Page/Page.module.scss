@@ -1,23 +1,30 @@
 .base {
   display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   height: 100vh;
 
-  aside {
-    flex: 0 0 var(--sidebar-width);
-  }
-  main {
+  .header {
+    align-items: center;
+    border-bottom: solid var(--line-width) var(--color-border-secondary);
     display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
+    flex: 0 0 var(--spacing-9);
+    justify-content: space-between;
+    padding: 0 var(--spacing-4);
 
-    .header {
-      flex: 0 0 var(--topbar-height);
-      padding: 0 16px;
+    & > :global(.ant-typography) {
+      margin: 0;
     }
-    .body {
-      flex: 1 1 auto;
-      overflow: auto;
-    }
+  }
+  .body {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: var(--spacing-4);
+  }
+}
+.base.noBodyPadding {
+  .body {
+    padding: 0;
   }
 }
 .base.scrolled {

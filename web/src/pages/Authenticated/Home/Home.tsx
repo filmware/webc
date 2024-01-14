@@ -1,45 +1,38 @@
-import { Select } from 'antd';
-import { useObservable } from 'micro-observables';
-import { useMemo } from 'react';
-import { NavLink } from 'react-router-dom';
+import { Card, Col, Row, Select, Statistic } from 'antd';
 
-import HomeRouter from '@/routes/HomeRouter';
-import themeStore from '@/stores/theme';
-
-import css from './Home.module.scss';
+import Page from '@/components/Page';
 
 function Home() {
-  const isDarkMode = useObservable(themeStore.isDarkMode);
-
-  const className = useMemo(() => {
-    const classes = [css.base];
-    if (isDarkMode) classes.push(css.dark);
-    return classes.join(' ');
-  }, [isDarkMode]);
-
   return (
-    <div className={className}>
-      <SideBar />
-      <div className={css.main}>
-        <HomeRouter />
-      </div>
-    </div>
-  );
-}
-
-function SideBar() {
-  return (
-    <div className={css.sidebar}>
-      <section className={css.date}>
-        <Select placeholder="Select the date" />
-      </section>
-      <section>
-        <NavLink to="overview">Overview</NavLink>
-        <NavLink to="clips">Clips</NavLink>
-        <a>Upload Report</a>
-        <a>Upload Callsheet</a>
-      </section>
-    </div>
+    <Page options={<Select placeholder="Date" />} title="Statistics">
+      <Row gutter={[12, 12]}>
+        <Col span={6}>
+          <Card size="small">
+            <Statistic title="Completed Days" value="5" />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card size="small">
+            <Statistic title="Reports Uploaded" value="5" />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card size="small">
+            <Statistic title="Mags Shot" value="60" />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card size="small">
+            <Statistic title="Clips Shot" value="360" />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card size="small">
+            <Statistic title="Total Data Size" value="3.2 TB" />
+          </Card>
+        </Col>
+      </Row>
+    </Page>
   );
 }
 

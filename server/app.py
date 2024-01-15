@@ -26,7 +26,7 @@ def tojson(obj, indent=None):
         if isinstance(obj, (list, tuple)):
             return [jsonable(v) for v in obj]
         if isinstance(obj, dict):
-            return {k: jsonable(v) for k, v in obj.items()}
+            return {str(k): jsonable(v) for k, v in obj.items()}
         # custom types
         if isinstance(obj, uuid.UUID):
             return str(obj)
@@ -136,6 +136,8 @@ class Listener:
         self.bootq = asyncio.Queue()
         self.booted = False
 
+        self.expandq = asyncio.Queue()
+
     # start must complete before subscriptions may be added
     async def start(self):
         await self.conn.add_listener('stream', self.on_notify)
@@ -154,9 +156,67 @@ class Listener:
         self.preconfigure = []
 
     async def run(self):
-        # wait for a justbootem signal
+        await waitgroup(self.detect_justbootem(), self.expandall())
+
+    async def detect_justbootem(self):
         boot_reason = await self.bootq.get()
         raise ValueError(f"booting: {boot_reason}")
+
+    async def expandall(self):
+        while True:
+            x = await self.expandq.get()
+            typ = x["type"]
+            if typ == "report":
+                # expand a report
+                results = await self.conn.fetch(
+                    """
+                    select
+                        srv_id,
+                        seqno,
+                        project,
+                        report,
+                        version,
+                        operation,
+                        modifies,
+                        reason,
+                        "user",
+                        submissiontime,
+                        authortime,
+                        archivetime
+                    from reports where version = $1
+                    """,
+                    x["version"]
+                )
+                results = results[0]
+                modifies = results["modifies"]
+                obj = {
+                    "type": "report",
+                    "srv_id": results["srv_id"],
+                    "seqno": results["seqno"],
+                    "project": str(results["project"]),
+                    "report": str(results["report"]),
+                    "version": str(results["version"]),
+                    "operation": json.loads(results["operation"]),
+                    "modifies": modifies and json.loads(modifies),
+                    "reason": results["reason"],
+                    "user": str(results["user"]),
+                    "submissiontime": results["submissiontime"],
+                    "authortime": results["authortime"],
+                    "archivetime": results["archivetime"],
+                }
+            else:
+                # object is already expanded
+                obj = x
+
+            # apply basic permissions
+            typ = obj["type"]
+            if typ in ["upload", "report", "topic", "comment"]:
+                if obj["project"] not in self.allprojects:
+                    continue
+            # broadcast to our subscribers
+            for sub in self.subs:
+                sub.put(obj)
+
 
     def check_bootem(self, obj):
         typ = obj["type"]
@@ -180,8 +240,8 @@ class Listener:
                 return "this session was invalidated"
         return None
 
+    # synchronous!
     def on_notify(self, conn, pid, channel, payload):
-        # synchronous!
         if self.booted:
             return
         obj = json.loads(payload)
@@ -197,14 +257,8 @@ class Listener:
             self.booted = True
             self.bootq.put_nowait(boot_reason)
             return
-        # apply basic permissions
-        typ = obj["type"]
-        if typ in ["entry", "topic", "comment"]:
-            if obj["project"] not in self.allprojects:
-                return
-        # broadcast to our subscribers
-        for sub in self.subs:
-            sub.put(obj)
+        # objects must be expanded before filtering or passing to subscribers
+        self.expandq.put_nowait(obj)
 
     def add_subscriber(self, sub):
         self.subs.add(sub)
@@ -230,9 +284,13 @@ class Argno:
         return "".join(out)
 
 
-def mkdict(typ, itr):
+def mkdict(typ, itr, jsonify=("archivetime",)):
     out = dict(itr)
     out["type"] = typ
+    for j in jsonify:
+        x = out[j]
+        if x is not None:
+            out[j] = json.loads(x)
     return out
 
 
@@ -437,9 +495,9 @@ class SubscriptionSpec:
         return "where " + " and ".join(clauses), args
 
 
-class EntriesSpec(SubscriptionSpec):
-    fieldname = "entries"
-    matchables = ("project", "report", "user")
+class ReportsSpec(SubscriptionSpec):
+    fieldname = "reports"
+    matchables = ("project", "user")
 
     async def fetch_initial(self, conn):
         where, args = self.where()
@@ -447,25 +505,26 @@ class EntriesSpec(SubscriptionSpec):
             select
                 srv_id,
                 seqno,
-                report,
-                entry,
                 project,
-                "user",
-                clip_id,
-                content,
+                report,
+                version,
+                operation,
                 modifies,
+                "user",
                 reason,
+                submissiontime,
+                authortime,
                 archivetime
-            from entries
+            from reports
             {where}
             ORDER BY seqno
         """
-
         stmt = await conn.prepare(query)
-
         records = await stmt.fetch(*args)
-
-        return [mkdict("entry", r.items()) for r in records]
+        return [
+            mkdict("report", r.items(), jsonify=["operation", "modifies", "archivetime"])
+            for r in records
+        ]
 
 
 class TopicsSpec(SubscriptionSpec):
@@ -495,7 +554,7 @@ class TopicsSpec(SubscriptionSpec):
 
         records = await stmt.fetch(*args)
 
-        return [mkdict("topic", r.items()) for r in records]
+        return [mkdict("topic", r.items(), jsonify=["links", "archivetime"]) for r in records]
 
 
 class CommentsSpec(SubscriptionSpec):
@@ -531,13 +590,26 @@ class CommentsSpec(SubscriptionSpec):
 
 class Subscription:
     def __init__(self, w, mux_id, obj):
+        extra = set(obj.keys()).difference({
+            "type",
+            "mux_id",
+            "projects",
+            "accounts",
+            "users",
+            "permissions",
+            "reports",
+            "topics",
+            "comments",
+        })
+        if extra:
+            raise ValueError(f"unrecognized keys: {extra}")
         self.w = w
         self.mux_id = mux_id
         self.projects = AllProjects.from_json(obj.get("projects"))
         self.accounts = AllAccounts.from_json(obj.get("accounts"))
         self.users = AllUsers.from_json(obj.get("users"))
         self.permissions = AllPermissions.from_json(obj.get("permissions"))
-        self.entries = EntriesSpec.from_json(obj.get("entries"))
+        self.reports = ReportsSpec.from_json(obj.get("reports"))
         self.topics = TopicsSpec.from_json(obj.get("topics"))
         self.comments = CommentsSpec.from_json(obj.get("comments"))
         # collect streaming results for emission after we complete our initial
@@ -550,7 +622,7 @@ class Subscription:
             "account": self.accounts,
             "user": self.users,
             "permission": self.permissions,
-            "entry": self.entries,
+            "report": self.reports,
             "topic": self.topics,
             "comment": self.comments,
             "session": None,
@@ -654,7 +726,7 @@ class Reader:
 
     async def upload(self, objects):
         # sort objects into types
-        typed = {"newcomment":[], "newtopic": [], "newentry": []}
+        typed = {"newcomment":[], "newreport": [], "newtopic": []}
         for obj in objects:
             typed[obj["type"]].append(obj)
 
@@ -690,39 +762,39 @@ class Reader:
                             obj["parent"],
                             obj.get("body"),
                             readdatetime(obj["authortime"]),
-                            obj["archivetime"],
+                            tojson(obj["archivetime"]),
                             self.user,
                             datetime_now(),
                         )
-                if typed["newentry"]:
+                if typed["newreport"]:
                     stmt = await conn.prepare("""
-                        insert into entries (
+                        insert into reports (
                             project,
-                            "user",
-                            version,
                             report,
-                            entry,
-                            archivetime,
-                            clip_id,
-                            content,
+                            version,
+                            operation,
                             modifies,
-                            reason
+                            reason,
+                            "user",
+                            submissiontime,
+                            authortime,
+                            archivetime
                         ) values (
                             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
                         ) on conflict (version) do nothing;
                     """)
-                    for obj in typed["newentry"]:
+                    for obj in typed["newreport"]:
                         await stmt.fetch(
                             obj["project"],
-                            self.user,
-                            obj["version"],
                             obj["report"],
-                            obj["entry"],
-                            obj["archivetime"],
-                            obj.get("clip_id"),
-                            tojson(obj.get("content")),
+                            obj["version"],
+                            tojson(obj["operation"]),
                             tojson(obj.get("modifies")),
-                            obj.get("reasons"),
+                            obj.get("reason"),
+                            self.user,
+                            datetime_now(),
+                            readdatetime(obj["authortime"]),
+                            tojson(obj["archivetime"]),
                         )
                 if typed["newtopic"]:
                     stmt = await conn.prepare("""
@@ -748,7 +820,7 @@ class Reader:
                             obj["topic"],
                             obj["name"],
                             tojson(obj.get("links")),
-                            obj["archivetime"],
+                            tojson(obj["archivetime"]),
                             readdatetime(obj["authortime"]),
                             datetime_now(),
                         )

@@ -18,7 +18,6 @@
 
 - setup a venv if you'd like
 - pip install -r requirements.txt
-- devcluster (optional)
 
 ## Running the server
 
@@ -118,13 +117,13 @@ Example:
         # FUTURE: "users_since": [[0, 14], [1, 99]],
     },
 
-    "entries": {
+    "reports": {
         "since": [[0, 14], [1, 99]],
         # ONE OF:
         "match": "project", "value": "the-proj-uuid"
-        "match": "report", "value": "a-report-uuid"
         "match": "user", "value": "a-user-uuid"
     },
+
     "topics": {
         "since": [[0, 14], [1, 99]],
         # ONE OF:
@@ -210,19 +209,18 @@ Example `type:newcomment` object:
 }
 ```
 
-Example `type:newentry` object (the significance of the fields is defined in
-the `type:entry` section, below).
+Example `type:newreport` object (the significance of the fields is defined in
+the `type:report` section, below).
 
 ```
 {
-    "type": "newentry",
+    "type": "newreport",
     "project": "the-proj-uuid",
     "report": "the-report-uuid",
-    "entry": "the-entry-uuid",
     "version": "client-chosen-uuid",
+    "authortime": "2022-01-01T17:05:00Z",
     "archivetime": [[0,99], [1,199]],
-    "clip_id": ...,
-    "content": ...,
+    "operation": ...,
     "modifies": ...,
     "reason": ...
 }
@@ -241,8 +239,6 @@ Example `type:newtopic` object:
     ... other stuff tbd ...
     "links": [
         ["report", "a-report-uuid"],
-        ["entry", "an-entry-uuid"],
-        ["entry_version", "a-version-uuid"]
         ["clip", "a-clip-id"]
         ["take", "a-scene-and-take"]
     ]
@@ -418,7 +414,6 @@ Example:
     ... other stuff tbd ...
     "links": [
         ["report", "a-report-uuid"],
-        ["entry", "an-entry-uuid"],
         ["version", "a-version-uuid"]
     ]
 }
@@ -427,8 +422,8 @@ Example:
 Note that multiple links are allowed, and each has a different meaning:
 
 - `report`: a topic about an entire report
-- `entry`: a topic about a row of a report
 - `version`: a topic about a particular edit
+- TBD: there should be more
 
 #### `type:comment`
 
@@ -460,66 +455,84 @@ a comment.  The comment with the latest `authortime` should be used.
 
 A comment with a NULL body indicates a deletion of a comment.
 
-#### `type:entry`
+#### `type:report`
 
-A server tells a client about an entry.
+A server tells the client about a report.
 
 Example:
 
 ```
 {
-    "type": "entry",
+    "type": "report",
     "mux_id": 99,
     "srv_id": 0,
     "seqno", 1092,
     "project": "the-proj-uuid",
     "report": "the-report-uuid",
-    "entry": "the-entry-uuid",
     "version": "the-unique-version-uuid",
-    "archivetime": [[0,99], [1,199]]
-    "user": "the-user-uuid",
-    "clip_id": ...,
-    "content": ...,
+    "operation": ...,
     "modifies": ...,
     "reason": ...,
+    "upload": "the-upload-uuid",
+    "user": "the-user-uuid",
+    "submissiontime": "the-submission-time",
+    "authortime": "the-author-time",
+    "archivetime": [[0,99], [1,199]]
 }
 ```
 
-The behavior of `clip_id`, `content`, `modifies`, and `reason` vary depending
-on whether this `version_uuid` represents an original entry or an update to
-an existing entry.
+Where `operation` is one of:
 
-For an original entry:
-- modifies will be `null`
-- reason will be `null`
-- clip id will be a string
-- content will be a flat dict containing string fields and string keys
-
-Original entry example:
 ```
 {
-    "clip_id": "11b",
-    "content": {"field1": "val1", "field2": "val2"},
-    "modifies": null,
-    "reason": null,
+    "operation": "new",
+    "column_uuids": [...],
+    "columns": [...],
+    "row_uuids": [...],
+    "rows": [{"col-uuid": "cell-val", ...}, ...]
+    # OPTIONAL
+    "upload": "the-upload-uuid"
+}
+{
+    "operation": "add-column",
+    "uuid": "the-column-uuid",
+    "name": "the name",
+    # OPTIONAL
+    "default": "the default"
+}
+{
+    "operation": "add-row",
+    "uuid": "the-row-uuid",
+    "row": {"col-uuid": "cell-val", ...}
+}
+{
+    "operation": "rename-column",
+    "uuid": "the-column-uuid",
+    "name": "the new name"
+}
+{
+    "operation": "update-cell",
+    "column": "the-column-uuid",
+    "row": "the-row-uuid",
+    "text": "the new value"
+}
+{
+    "operation": "archive-report",
+    "value": (true|false)
+}
+{
+    "operation": "archive-column",
+    "uuid": "the-column-uuid"
+    "value": (true|false)
+}
+{
+    "operation": "archive-row",
+    "uuid": "the-row-uuid"
+    "value": (true|false)
 }
 ```
 
-For an edit to an existing entry:
-- `entry_uuid` must match an existing entry
-- `version_uuid` will be a new unique value
-- `modifies` will be a list of previous `version_uuid` values being updated.
-  It may be longer than 1 if there were conflicting edits that this edit is
-  resolving.
-- reason must not be `null`; it will contain a user-provided reason for the
-  edit
-- a non-`null` `clip_id` represents an update to the `clip_id`
-- `clip_id` may be `null` to indicate "no change"
-- content may be `null` to indicate changes to the fields.  If so,
-  `"field": null` deletes an existing field and `"field": "newval"` either
-  updates an existing field's value or adds a new one.
-- if both `clip_id` and `content` are null, that represents a deletion of the
-  row.
+Note that the first operation for a new report uuid must be `operation:new`.
 
 #### `type:uploaded`
 

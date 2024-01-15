@@ -46,7 +46,7 @@ export class FWClientRecon {
 class Since {
   /* since will look like this:
       {
-        "entries": {
+        "reports": {
           "1": 1029,
           "2": 3104,
         },
@@ -58,12 +58,26 @@ class Since {
   private since: Record<string, Record<string, number>>;
 
   constructor(spec: SubscriptionSpec) {
+    const allowed: Record<string, boolean> = {
+      projects: true,
+      users: true,
+      accounts: true,
+      permissions: true,
+      reports: true,
+      topics: true,
+      comments: true,
+    };
+    const extra = Object.keys(spec).filter((k) => !allowed[k]);
+    if (extra.length > 0) {
+      throw new Error(`unrecognized keys: [${extra}]`);
+    }
+
     this.since = {
       project: {},
       user: {},
       account: {},
       permission: {},
-      entry: {},
+      report: {},
       topic: {},
       comment: {},
     };
@@ -80,8 +94,8 @@ class Since {
     spec.permissions?.since?.forEach((x) => {
       this.since.permission[x[0]] = x[1];
     });
-    spec.entries?.since?.forEach((x) => {
-      this.since.entry[x[0]] = x[1];
+    spec.reports?.since?.forEach((x) => {
+      this.since.report[x[0]] = x[1];
     });
     spec.topics?.since?.forEach((x) => {
       this.since.topic[x[0]] = x[1];
@@ -117,7 +131,7 @@ class Since {
         ...spec.permissions,
         since: this.mkSince(this.since.permission),
       };
-    if (spec.entries) out.entries = { ...spec.entries, since: this.mkSince(this.since.entry) };
+    if (spec.reports) out.reports = { ...spec.reports, since: this.mkSince(this.since.report) };
     if (spec.topics) out.topics = { ...spec.topics, since: this.mkSince(this.since.topic) };
     if (spec.comments) out.comments = { ...spec.comments, since: this.mkSince(this.since.comment) };
     return out;

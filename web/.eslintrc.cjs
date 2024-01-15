@@ -42,7 +42,13 @@ module.exports = {
     '@typescript-eslint/no-explicit-any': 'error',
     '@typescript-eslint/no-unused-vars': [
       'error',
-      { args: 'after-used', ignoreRestSiblings: true },
+      {
+        args: 'after-used',
+        ignoreRestSiblings: true,
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+      },
     ],
     '@typescript-eslint/prefer-optional-chain': ['error'],
     'array-element-newline': ['error', 'consistent'],
@@ -81,6 +87,7 @@ module.exports = {
     ],
     'keyword-spacing': ['error'],
     'no-console': ['error', { allow: ['error', 'warn'] }],
+    'no-constant-condition': 'off',
     'no-duplicate-imports': 'error',
     'no-empty': ['error', { allowEmptyCatch: false }],
     'no-multi-spaces': ['error', { ignoreEOLComments: true }],

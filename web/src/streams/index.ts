@@ -12,6 +12,15 @@ import {
   FWUserAccounts,
 } from './compilers';
 import { ConnectionState, ConnectionStatus, FWConnection, FWConnectionWS } from './conn';
+import {
+  FWCell,
+  FWColumn,
+  FWReportContent,
+  FWReports,
+  FWReportsList,
+  FWReportSummary,
+  FWRow,
+} from './reports';
 import { Advancer, isBefore, isBeforeSort, Uuid, UuidRecord } from './utils';
 
 export type {
@@ -29,6 +38,13 @@ export type {
   FWCommentsResult,
   FWTopic,
   FWTopicsResult,
+  // reports
+  FWCell,
+  FWColumn,
+  FWReportContent,
+  FWReportsList,
+  FWReportSummary,
+  FWRow,
   // conn
   ConnectionState,
   ConnectionStatus,
@@ -47,6 +63,8 @@ export {
   FWUserAccounts,
   FWComments,
   FWTopics,
+  // reports
+  FWReports,
   // conn
   FWConnectionWS,
 };

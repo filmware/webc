@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+import collections
 import datetime
 import json
 import logging
@@ -59,192 +60,426 @@ def ri(a, b):
 
 
 async def random_user(conn):
-    all_users = [r["user"] for r in await conn.fetch('select "user" from users')]
+    all_users = [str(r["user"]) for r in await conn.fetch('select "user" from users')]
     return random.choice(all_users)
 
+
+def tojson(obj, indent=None):
+
+    def jsonable(obj):
+        if isinstance(obj, (str, bool, type(None), int, float)):
+            return obj
+        if isinstance(obj, (list, tuple)):
+            return [jsonable(v) for v in obj]
+        if isinstance(obj, dict):
+            return {str(k): jsonable(v) for k, v in obj.items()}
+        # custom types
+        if isinstance(obj, uuid.UUID):
+            return str(obj)
+        if isinstance(obj, datetime.datetime):
+            # .isoformat doesn't do what I want; I want utc rfc3339 stamps
+            return obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        raise TypeError(
+            f"unable to jsonify {obj!r} of type {type(obj).__name__}"
+        )
+
+    return json.dumps(jsonable(obj), indent=indent)
 
 
 async def fake_report(conn):
     user = await random_user(conn)
     # Create a fake report.
     report = uuid.uuid4()
-    for i in range(ri(5, 25)):
-        entry = uuid.uuid4()
-        version = uuid.uuid4()
-        clip_id = str(ri(1, 50)) + "abcdef"[ri(0,5)]
-        content = {
-            "notes": random_sentence(ri(1, 3)),
-            "actors": random_word(ri(1, 10)),
-            "scene": random_word(ri(1, 3)),
-        }
-        await conn.fetch(
-            f"""
-            insert into entries (
-                project,
-                "user",
-                report,
-                entry,
-                version,
-                clip_id,
-                content
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-            """,
-            PROJ,
-            user,
+    version = uuid.uuid4()
+    upload = uuid.uuid4()
+    column_uuids = [uuid.uuid4() for _ in range(ri(2,5))]
+    columns = [f"{i} {random_word(2)}" for i, _ in enumerate(column_uuids)]
+    row_uuids = [uuid.uuid4() for i in range(ri(2, 5))]
+    rows = [{c: random_word(ri(1, 10)) for c in column_uuids} for _ in row_uuids]
+    operation = {
+        "operation": "new",
+        "column_uuids": column_uuids,
+        "columns": columns,
+        "row_uuids": row_uuids,
+        "rows": rows,
+    }
+    modifies = None
+    reason = None
+    await conn.fetch(
+        f"""
+        insert into reports (
+            project,
             report,
-            entry,
             version,
-            clip_id,
-            json.dumps(content),
-        )
+            operation,
+            modifies,
+            "user",
+            reason,
+            submissiontime,
+            authortime
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        """,
+        PROJ,
+        report,
+        version,
+        tojson(operation),
+        modifies,
+        user,
+        reason,
+        datetime.datetime.now(),
+        datetime.datetime.now(),
+    )
 
 
-def unmodified_versions(entry):
-    # return a list of versions not modified by anything
-    modified = set(m for modifies in entry.values() if modifies for m in modifies)
-    return set(entry).difference(modified)
+class ReportVersion:
+    def __init__(self, report, row):
+        self.report = str(report)
+        self.version = str(row["version"])
+        self.modifies = row["modifies"] and json.loads(row["modifies"]) or []
+        self.operation = json.loads(row["operation"])
+        self.type = self.operation["operation"]
+
+async def get_report_versions(conn, report):
+    all_versions = await conn.fetch(
+        "select report, version, operation, modifies from reports where report = $1", report
+    )
+    return [ReportVersion(report, result) for result in all_versions]
+
+def get_columns(rvs):
+    cols = []
+    for rv in rvs:
+        if rv.type == "new":
+            cols.extend(rv.operation["column_uuids"])
+        elif rv.type == "add-column":
+            cols.append(rv.operation["uuid"])
+    return cols
+
+
+class Unresolved:
+    def __init__(self, missing, func):
+        self.missing = set(missing)
+        self.func = func
+
+    def resolve(self, val):
+        self.missing.remove(val)
+        if self.missing:
+            return
+        self.func()
+
+
+def resolvable(rvs):
+    seen = set()
+    needed = {}
+    ready = list(rvs)
+    while ready:
+        rv = ready.pop(0)
+        missing = [m for m in rv.modifies if m not in seen]
+        if missing:
+            u = Unresolved(missing, lambda: ready.append(rv))
+            [needed.setdefault(m, []).append(u) for m in missing]
+            continue
+        seen.add(rv.version)
+        for u in needed.pop(rv.version, []):
+            u.resolve(rv.version)
+        yield rv
+
+
+def structure_versions(rvs):
+    columns = collections.defaultdict(set)
+    unmod_columns = collections.defaultdict(set)
+    # cells[row][col]
+    cells = collections.defaultdict(lambda: collections.defaultdict(set))
+    unmod_cells = collections.defaultdict(lambda: collections.defaultdict(set))
+
+    def apply(rv, c, u, *keys):
+        # apply to {column,cells}
+        x = c
+        for k in keys:
+            x = x[k]
+        x.add(rv.version)
+        # apply to unmod_{columns,cells}
+        x = u
+        for k in keys:
+            x = x[k]
+        x.add(rv.version)
+        [x.discard(m) for m in rv.modifies]
+
+    for rv in resolvable(rvs):
+        if rv.type == "new":
+            for c in rv.operation["column_uuids"]:
+                apply(rv, columns, unmod_columns, c)
+                for r, row in zip(rv.operation["row_uuids"], rv.operation["rows"]):
+                    if c in row:
+                        apply(rv, cells, unmod_cells, r, c)
+        elif rv.type == "add-column":
+            apply(rv, columns, unmod_columns, rv.operation["uuid"])
+        elif rv.type == "rename-column":
+            apply(rv, columns, unmod_columns, rv.operation["uuid"])
+        elif rv.type == "add-row":
+            for c in rv.operation["row"]:
+                apply(rv, cells, unmod_cells, rv.operation["uuid"], c)
+        elif rv.type == "update-cell":
+            apply(rv, cells, unmod_cells, rv.operation["row"], rv.operation["column"])
+
+    return columns, cells, unmod_columns, unmod_cells
 
 
 async def fake_edit(conn):
     user = await random_user(conn)
     # Create a fake edit in every existing report.
-    all_reports = [
-        r["report"] for r in await conn.fetch(
-            "select report from entries group by report"
-        )
-    ]
+    all_reports = set(
+        str(r["report"]) for r in await conn.fetch("select report from reports group by report")
+    )
     for report in all_reports:
-        # {entry_uuid: {version_uuid: [modifies]}}
-        entries = {}
-        for entry_uuid, version, modifies in await conn.fetch(
-            """
-            select
-                entry, version, modifies
-            from entries
-            where report = $1
-            """,
-            report,
-        ):
-            entry = entries.setdefault(entry_uuid, {})
-            entry[version] = modifies and json.loads(modifies)
+        rvs = await get_report_versions(conn, report)
+        columns = get_columns(rvs)
+        colvers, cellvers, unmod_cols, unmod_cells = structure_versions(rvs)
 
-        mode = ri(1,3)
+        mode = ri(1,7)
 
-        if mode == 1:
+        if 1 <= mode <= 4:
+            # fill in a blank
+            filled_one = False
+            rlist = list(unmod_cells.items())
+            random.shuffle(rlist)
+            clist = list(columns)
+            random.shuffle(columns)
+            for row, cells in rlist:
+                for column in clist:
+                    if column in cells:
+                        continue
+                    filled_one = True
+                    reason = "filling empty cell"
+                    version = uuid.uuid4()
+                    modifies = None
+                    operation = {
+                        "operation": "update-cell",
+                        "row": row,
+                        "column": column,
+                        "text": random_word(ri(1,2)),
+                    }
+                    await conn.fetch(
+                        """
+                        insert into reports (
+                            project,
+                            report,
+                            version,
+                            operation,
+                            modifies,
+                            reason,
+                            "user",
+                            submissiontime,
+                            authortime
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        """,
+                        PROJ,
+                        report,
+                        version,
+                        tojson(operation),
+                        modifies,
+                        reason,
+                        user,
+                        datetime.datetime.now(),
+                        datetime.datetime.now(),
+                    )
+                    break
+
+                if filled_one:
+                    break
+
+            if not filled_one:
+                # fine, create a new one instead
+                mode = 5
+
+
+        if mode == 5:
             # create a conflict
-            for entry_uuid, entry in entries.items():
-                if len(entry) < 2:
-                    continue
-                # use the same modifies value as some existing edit
-                edits = [m for v, m in entry.items() if m]
-                modifies = random.choice(edits)
-                content = {
-                    "notes": random_sentence(ri(1, 3)),
-                    "actors": random_word(ri(1, 10)),
-                    "scene": random_word(ri(1, 3)),
-                }
-                version = uuid.uuid4()
-                reason = "intentional conflcit"
-                await conn.fetch(
-                    """
-                    insert into entries (
-                        project,
-                        "user",
-                        report,
-                        entry,
-                        version,
-                        content,
-                        reason,
-                        modifies
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    """,
-                    PROJ,
-                    user,
-                    report,
-                    entry_uuid,
-                    version,
-                    json.dumps(content),
-                    reason,
-                    json.dumps([str(m) for m in modifies]),
-                )
-                break
+            if ri(1,4) == 1:
+                # conflict on a column name
+                c = random.choice(columns)
+                modifies = [
+                    tojson([random.choice(list(unmod_cols[c]))]),
+                    tojson([random.choice(list(unmod_cols[c]))]),
+                ]
+                operation = [
+                    {"operation": "rename-column", "uuid": c, "name": random_word(ri(1,2))},
+                    {"operation": "rename-column", "uuid": c, "name": random_word(ri(1,2))},
+                ]
             else:
-                # No conflict was found.  Just insert an entry.
-                mode = 3
+                # create a conflict in a cell somewhere
+                c = random.choice(columns)
+                r = random.choice(list(cellvers))
+                unmod_cell = unmod_cells[r][c]
+                modifies = [
+                    tojson([random.choice(list(unmod_cell))]) if unmod_cell else None,
+                    tojson([random.choice(list(unmod_cell))]) if unmod_cell else None,
+                ]
+                operation = [
+                    {"operation": "update-cell", "column": c, "row": r, "text": random_word(3)},
+                    {"operation": "update-cell", "column": c, "row": r, "text": random_word(3)},
+                ]
 
-        if mode == 2:
-            # resolve all conflicts.
-            resolved_one = False
-            for entry_uuid, entry in entries.items():
-                unmodified = unmodified_versions(entry)
-                if len(unmodified) < 2:
-                    continue
-                resolved_one = True
-                content = {
-                    "notes": random_sentence(ri(1, 3)),
-                    "actors": random_word(ri(1, 10)),
-                    "scene": random_word(ri(1, 3)),
-                }
-                version = uuid.uuid4()
-                reason = "conflict resolution"
-                await conn.fetch(
-                    """
-                    insert into entries (
-                        project,
-                        "user",
-                        report,
-                        entry,
-                        version,
-                        content,
-                        reason,
-                        modifies
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    """,
-                    PROJ,
-                    user,
-                    report,
-                    entry_uuid,
-                    version,
-                    json.dumps(content),
-                    reason,
-                    json.dumps([str(m) for m in unmodified]),
-                )
-            if not resolved_one:
-                # No conflict was resolved.  Just insert an entry.
-                mode = 3
-
-        if mode == 3:
-            # insert a normal edit modifying a single previous version
-            entry_uuid = random.choice(list(entries))
-            modifies = [random.choice(list(unmodified_versions(entry)))]
-            content = {
-                "notes": random_sentence(ri(1, 3)),
-                "actors": random_word(ri(1, 10)),
-                "scene": random_word(ri(1, 3)),
-            }
-            version = uuid.uuid4()
-            reason = "conflict resolution"
+            reason = [random_sentence(1), random_sentence(1)]
+            version = [uuid.uuid4(), uuid.uuid4()]
+            user2 = await random_user(conn)
             await conn.fetch(
                 """
-                insert into entries (
+                insert into reports (
                     project,
-                    "user",
                     report,
-                    entry,
                     version,
-                    content,
+                    operation,
+                    modifies,
                     reason,
-                    modifies
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    "user",
+                    submissiontime,
+                    authortime
+                ) VALUES
+                    ($1, $2, $3, $4, $5, $6, $7, $8, $9),
+                    ($10, $11, $12, $13, $14, $15, $16, $17, $18)
+                """,
+                # a
+                PROJ,
+                report,
+                version[0],
+                tojson(operation[0]),
+                modifies[0],
+                reason[0],
+                user,
+                datetime.datetime.now(),
+                datetime.datetime.now(),
+                # b
+                PROJ,
+                report,
+                version[1],
+                tojson(operation[1]),
+                modifies[1],
+                reason[1],
+                user2,
+                datetime.datetime.now(),
+                datetime.datetime.now(),
+            )
+
+        if mode == 6:
+            # resolve all conflicts.
+            resolved_one = False
+            # resolve all column conflicts
+            for c, unmod in unmod_cols.items():
+                if len(unmod) < 2: continue
+                resolved_one = True
+                operation = {"operation": "rename-column", "uuid": c, "name": random_word(ri(1,2))}
+                modifies = list(unmod)
+                version = uuid.uuid4()
+                reason = "resolve conflicts"
+                await conn.fetch(
+                    """
+                    insert into reports (
+                        project,
+                        report,
+                        version,
+                        operation,
+                        modifies,
+                        reason,
+                        "user",
+                        submissiontime,
+                        authortime
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    """,
+                    # a
+                    PROJ,
+                    report,
+                    version,
+                    tojson(operation),
+                    tojson(modifies),
+                    reason,
+                    user,
+                    datetime.datetime.now(),
+                    datetime.datetime.now(),
+                )
+            # resolve all cell conflicts
+            for r, cells in unmod_cells.items():
+                for c, unmod in cells.items():
+                    if len(unmod) < 2: continue
+                    resolved_one = True
+                    text = random_word(ri(1,5))
+                    operation = {"operation": "update-cell", "row": r, "column": c, "text": text}
+                    modifies = list(unmod)
+                    version = uuid.uuid4()
+                    reason = "resolve conflicts"
+                    await conn.fetch(
+                        """
+                        insert into reports (
+                            project,
+                            report,
+                            version,
+                            operation,
+                            modifies,
+                            reason,
+                            "user",
+                            submissiontime,
+                            authortime
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        """,
+                        # a
+                        PROJ,
+                        report,
+                        version,
+                        tojson(operation),
+                        tojson(modifies),
+                        reason,
+                        user,
+                        datetime.datetime.now(),
+                        datetime.datetime.now(),
+                    )
+            if not resolved_one:
+                # no conflict was resolved, insert something new instead
+                mode = 7
+
+        if mode == 7:
+            # add a new column or row
+            if ri(1,4) == 1:
+                # add a new column
+                column = uuid.uuid4()
+                name = random_word(ri(1,3))
+                operation = {"operation": "add-column", "uuid": column, "name": name}
+                reason = "I wanted a new column"
+            else:
+                # add a new row
+                row = uuid.uuid4()
+                cells = {c: random_word(ri(1,5)) for c in columns}
+                operation = {"operation": "add-row", "uuid": row, "row": cells}
+                reason = "I wanted a new row"
+
+            version = uuid.uuid4()
+            modifies = None
+
+            # add a brand new entry
+            entry_uuid = uuid.uuid4()
+            version = uuid.uuid4()
+            reason = None
+            await conn.fetch(
+                """
+                insert into reports (
+                    project,
+                    report,
+                    version,
+                    operation,
+                    modifies,
+                    reason,
+                    "user",
+                    submissiontime,
+                    authortime
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 """,
                 PROJ,
-                user,
                 report,
-                entry_uuid,
                 version,
-                json.dumps(content),
+                tojson(operation),
+                None, # modifies
                 reason,
-                json.dumps([str(m) for m in modifies]),
+                user,
+                datetime.datetime.now(),
+                datetime.datetime.now(),
             )
 
 
@@ -254,7 +489,7 @@ async def fake_topic(conn):
     if mode == 1:
         # Modify an existing topic.
         all_topics = [
-            r["topic"] for r in await conn.fetch(
+            str(r["topic"]) for r in await conn.fetch(
                 "select topic from topics group by topic"
             )
         ]
@@ -272,8 +507,8 @@ async def fake_topic(conn):
         topic = uuid.uuid4()
         name = random_word(5)
         all_reports = [
-            r["report"] for r in await conn.fetch(
-                "select report from entries group by report"
+            str(r["report"]) for r in await conn.fetch(
+                "select report from reports group by report"
             )
         ]
         random.shuffle(all_reports)
@@ -299,7 +534,7 @@ async def fake_topic(conn):
         name,
         datetime.datetime.now(),
         datetime.datetime.now(),
-        json.dumps(links),
+        tojson(links),
     )
 
 async def fake_comment(conn):

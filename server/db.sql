@@ -147,53 +147,77 @@ create table if not exists permissions (
 create index if not exists permissions_user_idx on permissions ("user");
 create index if not exists permissions_project_idx on permissions (project);
 
--- entries is an archive table.  Really it contains two kinds of entries:
---   - original entries added to a report, from an upload or manual action
---   - modified or deleted entries of an existing report
---
--- the report uuid may correspond to an uploaded file that we keep somewhere.
-create sequence if not exists entries_seq as int8 start 1;
-create table if not exists entries (
+-- uploads are immutable, and probably won't be streamed to clients but can be
+-- downloaded.  Server-to-server streaming is still important.
+create sequence if not exists uploads_seq as int8 start 1;
+create table if not exists uploads (
     srv_id int not null default 1,
-    seqno int8 not null default nextval('entries_seq'),
-    report uuid not null,
-    -- the entry in the report; not unique because edits also appear here
-    entry uuid not null,
-    -- the version of this entry; unique, but not linear
-    version uuid unique,
+    seqno int8 not null default nextval('uploads_seq'),
     project uuid not null,
+    upload uuid primary key,
     "user" uuid not null,
+    submissiontime timestamptz not null,
+    authortime timestamptz not null,
+    archivetime jsonb,
+    mimetype varchar not null,
 
-    -- for original entries:
-    --   - report shall be unique (at least until there is an edit)
-    --   - clip_id is non-null (but is allowed to be empty)
-    --   - content is non-null
-    --   - reason is null (meaning "newly added report")
-    --
-    -- for edited entries:
-    --   - report shall point to an existing report uuid
-    --   - reason is non-null, a user-provided explanation for the edit
-    --   - modifies is non-null, a list of version uuid's
-    --   - archivetime is non-null, a pagination key
-    --   - a null content and null clip_id is a deletion of the whole entry
-    --   - null fields in a non-null content are deleted columns
-    --   - non-null fields in content are overwritten
-    --   - unspecified fields in content are unaffected
-    --   - null clip_id is "no change"
-    --   - non-null clip_id is a change to clip_id
+    constraint uploads_seq_uniq unique (srv_id, seqno)
+);
 
-    clip_id varchar(64),
-    content jsonb not null,
+-- REPORTS
+--
+-- There are special columns (mag id, clip id, scene, take, etc) but they are
+-- not coded into the data model.  There will always be reports missing some
+-- of those special columns.  The joining of reports into a clips table will
+-- be the responsibility of the client.
+--
+-- Reports are saved as individual operations, each corresponding to a user
+-- action, and the client is responsible for compiling the operations into the
+-- actual report content (and dealing with conflicts appropriately).
+--
+-- report operations
+--   - new report (always the first operation)
+--   - add-column [with default value]
+--   - rename-column
+--   - add-row
+--   - update-cell
+--   - archive-report (true/false)
+--   - archive-column (true/false)
+--   - archive-row (true/false)
+--
+-- A conflict is defined as two or more operations applying to the same field
+-- which are not marked as modified by any other versions.
+--
+-- Happily, the only possible conflicts in a report are:
+--   - two rename-column operations can conflict with each other
+--   - two update-cell opearations can conflict with each other
+--
+-- I suppose archived state can also conflict, but I think resolving to last
+-- submitted value is fine for a boolean.
+--
+-- There may be higher-level reasoning sorts of conflicts, like two columns
+-- with the same name.
+create sequence if not exists reports_seq as int8 start 1;
+create table if not exists reports (
+    srv_id int not null default 1,
+    seqno int8 not null default nextval('reports_seq'),
+    project uuid not null,
+    report uuid not null,
+    version uuid unique,
+    operation jsonb not null,
     modifies jsonb,
     reason varchar,
+    "user" uuid not null,
+    submissiontime timestamptz not null,
+    authortime timestamptz not null,
     archivetime jsonb,
 
-    constraint entries_seq_uniq unique (srv_id, seqno)
+    constraint reports_seq_uniq unique (srv_id, seqno)
 );
 
 -- ideas:
-create index if not exists entries_report_idx on entries (report);
-create index if not exists entries_entry_idx on entries (entry);
+create index if not exists reports_project_idx on reports (project);
+create index if not exists reports_report_idx on reports (report);
 
 -- topics is an archive table
 create sequence if not exists topics_seq as int8 start 1;
@@ -277,19 +301,34 @@ BEGIN
 END;
 $$ language plpgsql;
 
+-- for notify-by-key
+-- stream_send_key( kind )
+create or replace function stream_send_version() returns trigger as $$
+DECLARE
+    output jsonb = NULL;
+BEGIN
+    output = output;
+    PERFORM pg_notify('stream', (
+        jsonb_object_agg('type', TG_ARGV[0])
+        || jsonb_object_agg('version', NEW.version)
+    )::text);
+    return null;
+END;
+$$ language plpgsql;
+
 create or replace trigger projects_trigger after insert on projects
 for each row execute procedure stream_send(
     'project', 'authortime', 'submissiontime'
 );
 
-create or replace trigger accounts_trigger after insert on accounts
-for each row execute procedure stream_send(
-    'account', 'authortime', 'submissiontime'
-);
-
 create or replace trigger users_trigger after insert on users
 for each row execute procedure stream_send(
     'user', 'authortime', 'submissiontime'
+);
+
+create or replace trigger accounts_trigger after insert on accounts
+for each row execute procedure stream_send(
+    'account', 'authortime', 'submissiontime'
 );
 
 create or replace trigger sessions_trigger after insert or update on sessions
@@ -302,13 +341,18 @@ for each row execute procedure stream_send(
     'permission', 'authortime', 'submissiontime'
 );
 
+create or replace trigger uploads_trigger after insert on uploads
+for each row execute procedure stream_send(
+    'upload', 'authortime', 'submissiontime'
+);
+
+create or replace trigger reports_trigger after insert on reports
+for each row execute procedure stream_send_version('report');
+
 create or replace trigger comments_trigger after insert on comments
 for each row execute procedure stream_send(
     'comment', 'authortime', 'submissiontime'
 );
-
-create or replace trigger entries_trigger after insert on entries
-for each row execute procedure stream_send('entry');
 
 create or replace trigger topics_trigger after insert on topics
 for each row execute procedure stream_send(

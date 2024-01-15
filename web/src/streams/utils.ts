@@ -58,6 +58,74 @@ export type RecvUser = RecvMsgCommon & {
   archivetime: Date;
 };
 
+type ReportNew = {
+  operation: 'new';
+  column_uuids: Uuid[];
+  columns: string[];
+  row_uuids: Uuid[];
+  rows: UuidRecord<string>[];
+  upload?: Uuid;
+};
+type ReportAddColumn = {
+  operation: 'add-column';
+  uuid: Uuid;
+  name: string;
+  default?: string;
+};
+type ReportAddRow = {
+  operation: 'add-row';
+  uuid: Uuid;
+  row: UuidRecord<string>;
+};
+type ReportRenameColumn = {
+  operation: 'rename-column';
+  uuid: Uuid;
+  name: string;
+};
+type ReportUpdateCell = {
+  operation: 'update-cell';
+  row: Uuid;
+  column: Uuid;
+  text: string;
+};
+type ReportArchiveReport = {
+  operation: 'archive-report';
+  value: boolean;
+};
+type ReportArchiveColumn = {
+  operation: 'archive-column';
+  uuid: Uuid;
+  value: boolean;
+};
+type ReportArchiveRow = {
+  operation: 'archive-row';
+  uuid: Uuid;
+  value: boolean;
+};
+type ReportOperation =
+  | ReportNew
+  | ReportAddColumn
+  | ReportAddRow
+  | ReportRenameColumn
+  | ReportUpdateCell
+  | ReportArchiveReport
+  | ReportArchiveColumn
+  | ReportArchiveRow;
+
+export type RecvReport = RecvMsgCommon & {
+  type: 'report';
+  project: Uuid;
+  report: Uuid;
+  version: Uuid;
+  operation: ReportOperation;
+  modifies: Uuid[] | null;
+  reason: string | null;
+  user: Uuid;
+  submissiontime: Date;
+  authortime: Date;
+  archivetime: unknown;
+};
+
 export type RecvComment = RecvMsgCommon & {
   type: 'comment';
   project: Uuid;
@@ -85,7 +153,7 @@ export type RecvTopic = RecvMsgCommon & {
   links: unknown;
 };
 
-export type RecvMsg = RecvProject | RecvAccount | RecvUser | RecvComment | RecvTopic;
+export type RecvMsg = RecvProject | RecvAccount | RecvUser | RecvReport | RecvComment | RecvTopic;
 export type RecvMsgOrSync = RecvMsg | RecvSync;
 export type RecvMsgAll = RecvMsgOrSync | RecvSuccess | RecvFailure;
 
@@ -106,7 +174,7 @@ export type SubscriptionSpec = {
   users?: AllSubscriptionItem;
   accounts?: AllSubscriptionItem;
   permissions?: SubscriptionItem;
-  entries?: SubscriptionItem;
+  reports?: SubscriptionItem;
   topics?: SubscriptionItem;
   comments?: SubscriptionItem;
 };
@@ -131,6 +199,21 @@ export function isBefore(a: Beforable, akind: string, b: Beforable, bkind: strin
 
 export function isBeforeSort(a: Beforable, akind: string, b: Beforable, bkind: string): number {
   return isBefore(a, akind, b, bkind) ? -1 : 1;
+}
+
+export function isBefore2(a: unknown, b: unknown, ...keys: string[]): boolean {
+  for (const i in keys) {
+    const key = keys[i];
+    // @ts-expect-error: please get out of the way, typescript
+    if (a[key] === b[key]) continue;
+    // @ts-expect-error: please get out of the way, typescript
+    return a[key] < b[key];
+  }
+  throw new Error(`unable to distinguish objects by keys [${keys}]`);
+}
+
+export function isBefore2Sort(a: unknown, b: unknown, ...keys: string[]): number {
+  return isBefore2(a, b, ...keys) ? -1 : 1;
 }
 
 type advanceUpFn = () => void;
@@ -208,6 +291,48 @@ export class AdvancerNoFail {
       return;
     }
     this.advance();
+  }
+}
+
+export type Needed = UuidRecord<{ (): void }[]>;
+
+export function need(key: Uuid, needed: Needed, unresolved: Unresolved, arg: unknown = null) {
+  if (key in needed) {
+    needed[key].push(unresolved.needed(arg));
+  } else {
+    needed[key] = [unresolved.needed(arg)];
+  }
+}
+
+export function resolve(key: Uuid, needed: Needed) {
+  if (key in needed) {
+    needed[key].forEach((fn) => fn());
+    delete needed[key];
+  }
+}
+
+export class Unresolved {
+  private flags: boolean[] = [];
+  private onResolve: (arg: unknown) => void;
+
+  constructor(onResolve: (arg: unknown) => void) {
+    this.onResolve = onResolve;
+  }
+
+  needed(arg: unknown): () => void {
+    const index = this.flags.length;
+    this.flags.push(false);
+    return () => {
+      this.flags[index] = true;
+      // was this the last dependency?
+      if (this.isResolved()) {
+        this.onResolve(arg);
+      }
+    };
+  }
+
+  isResolved(): boolean {
+    return this.flags.every((x) => x);
   }
 }
 

@@ -5,50 +5,16 @@ import {
   AdvancerNoFail,
   isBefore,
   isBeforeSort,
+  need,
+  Needed,
   RecvAccount,
   RecvMsg,
   RecvUser,
+  resolve,
+  Unresolved,
   Uuid,
   UuidRecord,
 } from './utils';
-
-type Needed = UuidRecord<{ (): void }[]>;
-
-function need(key: Uuid, needed: Needed, unresolved: Unresolved) {
-  if (key in needed) {
-    needed[key].push(unresolved.needed());
-  } else {
-    needed[key] = [unresolved.needed()];
-  }
-}
-
-function resolve(key: Uuid, needed: Needed) {
-  if (key in needed) {
-    needed[key].forEach((fn) => fn());
-    delete needed[key];
-  }
-}
-
-class Unresolved {
-  private flags: boolean[] = [];
-  private onResolve: () => void;
-
-  constructor(onResolve: () => void) {
-    this.onResolve = onResolve;
-  }
-
-  needed(): () => void {
-    const index = this.flags.length;
-    this.flags.push(false);
-    return () => {
-      this.flags[index] = true;
-      // was this the last dependency?
-      if (this.flags.every((x) => x)) {
-        this.onResolve();
-      }
-    };
-  }
-}
 
 export type FWProject = {
   srvId: number; // only for tie-breaker sorting
@@ -181,8 +147,8 @@ type Account = {
 
 /* FWUserAccount is information from the accounts table, keyed by the user uuid.  It is named
    "User-Account" to remind that:
-     - looking up account by UUID isn't normally correct; this is a specific simplification we are
-       offering the UI
+     - looking up account by user UUID isn't normally correct; this is a specific simplification we
+       are offering the UI
      - there is a cost to this simplification, which is that a given FWUserAccount might be returned
        by multiple user uuids */
 export type FWUserAccount = {
@@ -231,7 +197,7 @@ export class FWUserAccounts {
     this.syncObservable = this.syncWritable.readOnly();
   }
 
-  processAccount(msg: RecvAccount): boolean {
+  private processAccount(msg: RecvAccount): boolean {
     const a = {
       srvId: msg.srv_id,
       seqno: msg.seqno,
@@ -266,7 +232,7 @@ export class FWUserAccounts {
     return true;
   }
 
-  processUser(msg: RecvUser): boolean {
+  private processUser(msg: RecvUser): boolean {
     if (!(msg.account in this.accounts)) {
       // not yet resolvable
       const unresolved = new Unresolved(() => {
@@ -427,12 +393,12 @@ export class FWComments {
     const haveParent = parent == null || parent in this.comments;
     const haveUser = user in this.ua.users;
     if (!haveParent || !haveUser) {
-      const unresolved = new Unresolved(() => {
+      const unresolved = new Unresolved((arg) => {
         this.recvd.push(msg);
-        this.advancer.schedule();
+        if (arg) this.advancer.schedule();
       });
-      if (!haveParent) need(parent, this.commentsNeeded, unresolved);
-      if (!haveUser) need(user, this.ua.usersNeeded, unresolved);
+      if (!haveParent) need(parent, this.commentsNeeded, unresolved, true);
+      if (!haveUser) need(user, this.ua.usersNeeded, unresolved, false);
       return out;
     }
 

@@ -30,7 +30,15 @@ stages:
     pre:
     - sh: createdb -h /tmp/filmware filmware
     - sh: psql -h /tmp/filmware filmware < db.sql
-    - sh: ./fake.py rrrrreeeeeetttttcccccccccccccccc
+    - sh: ./fake.py rtttttcccccccccccccccc
+    - sh: ./ingest.py --save nextlab .example-data/dr.csv
+    - sh: ./ingest.py --save zoelog .example-data/cr-1.csv
+    - sh: ./ingest.py --save zoelog .example-data/cr-2.csv
+    - sh: ./ingest.py --save ltfs .example-data/ltor.csv
+    - sh: ./ingest.py --save zaxcom .example-data/sr-1.csv
+    - sh: ./ingest.py --save zaxcom .example-data/sr-2.csv
+    - sh: ./ingest.py --save silverstack .example-data/tr-1.csv
+    - sh: ./ingest.py --save silverstack .example-data/tr-2.csv
     cmd: ["sleep", "infinity"]
 
 - custom:

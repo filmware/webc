@@ -2,6 +2,7 @@ import { observable, Observable, WritableObservable } from 'micro-observables';
 
 import { FWClient, FWSubscription } from './client';
 import { FWUserAccounts } from './compilers';
+import { JoinedIndex, Joiner } from './join';
 import {
   AdvancerNoFail,
   isBefore2Sort,
@@ -9,7 +10,9 @@ import {
   Needed,
   RecvMsg,
   RecvReport,
+  RefreshRecord,
   resolve,
+  setdefault,
   Unresolved,
   Uuid,
   UuidRecord,
@@ -35,7 +38,7 @@ function updateHistory<T extends Historical>(
 }
 
 // return the automatic resolution, then every unmodified version, sorted for best-first
-function resolveHistory<H extends Historical>(hist: History<H>): [H, Uuid[]] {
+export function resolveHistory<H extends Historical>(hist: History<H>): [H, Uuid[]] {
   const results = Object.entries(hist)
     .filter(([_, h]) => !h.isModified) // eslint-disable-line @typescript-eslint/no-unused-vars
     .sort((a, b) => -isBefore2Sort(a[1], b[1], 'submissiontime', 'version'));
@@ -44,7 +47,7 @@ function resolveHistory<H extends Historical>(hist: History<H>): [H, Uuid[]] {
 }
 
 // returns just the chosen historical value, not all the versions
-function resolveHistory1<H extends Historical>(hist: History<H>): H {
+export function resolveHistory1<H extends Historical>(hist: History<H>): H {
   return Object.values(hist)
     .filter((h) => !h.isModified)
     .sort((a, b) => -isBefore2Sort(a, b, 'submissiontime', 'version'))[0];
@@ -132,41 +135,6 @@ type RawReport = {
 };
 
 // REFRESH //
-
-// R: "r"efresh type
-// T: the content "t"ype
-class RefreshRecord<R, T> {
-  vmem: UuidRecord<R>;
-  private fw: UuidRecord<T>;
-  private newR: (t: T) => R;
-
-  constructor(fw: UuidRecord<T>, newR: (t: T) => R) {
-    this.vmem = {};
-    this.fw = fw;
-    this.newR = newR;
-  }
-
-  // "get"
-  g(key: Uuid): R {
-    let r = this.vmem[key];
-    let t = this.fw[key];
-    if (!r) {
-      t = { ...t };
-      r = this.newR(t);
-      this.vmem[key] = r;
-      this.fw[key] = t;
-    }
-    return r;
-  }
-
-  keys(): Uuid[] {
-    return Object.keys(this.vmem);
-  }
-
-  entries(): [Uuid, R][] {
-    return Object.entries(this.vmem);
-  }
-}
 
 class RefreshRow {
   varchived?: true;
@@ -307,15 +275,6 @@ class Refresh {
   }
 }
 
-function setdefault<T>(obj: Record<string, T>, key: string, dfault: T): T {
-  if (key in obj) {
-    return obj[key];
-  } else {
-    obj[key] = dfault;
-    return dfault;
-  }
-}
-
 export class FWReports {
   reportsList: Observable<FWReportsList>;
   reportContents: UuidRecord<Observable<FWReportContent>>;
@@ -335,8 +294,9 @@ export class FWReports {
   // experimental: uuid of versions, rows, columns, or reports that are needed
   private needed: Needed = {};
 
-  private columns: UuidRecord<RawColumn> = {};
-  private rows: UuidRecord<RawRow> = {};
+  // public for FWJoinedTable's sake
+  columns: UuidRecord<RawColumn> = {};
+  rows: UuidRecord<RawRow> = {};
   private reports: UuidRecord<RawReport> = {};
 
   // exported objects
@@ -344,6 +304,9 @@ export class FWReports {
   summaries: UuidRecord<FWReportSummary> = {};
   bySubmit: Uuid[] = [];
   contents: UuidRecord<FWReportContent> = {};
+
+  // index is public for FWJoinedReport's sake
+  index?: JoinedIndex;
 
   private synced: boolean = false;
   private uaSynced: boolean = false;
@@ -386,7 +349,7 @@ export class FWReports {
     }
   }
 
-  private processReport(msg: RecvReport, refresh: Refresh): void {
+  private processReport(msg: RecvReport, refresh: Refresh, rowUpdates: UuidRecord<Uuid>): void {
     const report = msg.report;
     const version = msg.version;
     const op = msg.operation;
@@ -466,10 +429,10 @@ export class FWReports {
         break;
     }
 
-    this.apply(msg, refresh);
+    this.apply(msg, refresh, rowUpdates);
   }
 
-  apply(msg: RecvReport, refresh: Refresh): void {
+  private apply(msg: RecvReport, refresh: Refresh, rowUpdates: UuidRecord<Uuid>): void {
     const report = msg.report;
     const version = msg.version;
     const op = msg.operation;
@@ -557,6 +520,8 @@ export class FWReports {
           // create new content
           refresh.contents();
           this.contents[report] = content;
+          // make sure every row in this new report is flagged as an update
+          op.row_uuids.forEach((uuid) => (rowUpdates[uuid] = report));
 
           // create new summary
           refresh.summaries();
@@ -647,6 +612,9 @@ export class FWReports {
           };
           content.rowList.push(op.uuid);
 
+          // make sure this new row is flagged as an update
+          rowUpdates[op.uuid] = report;
+
           this.processEditTime(msg, report, refresh);
         }
         break;
@@ -720,19 +688,29 @@ export class FWReports {
           refresh.contents().g(report).rows().g(op.uuid).archived();
         }
         break;
+
+      default:
+        throw new Error(`unknown op.operation in ${op}`);
     }
   }
 
   // returns the delta of conflicts
-  private rebuildContent(report: Uuid, refresh: RefreshContent): number {
+  private rebuildContent(
+    report: Uuid,
+    refresh: RefreshContent,
+    rowUpdates: UuidRecord<Uuid>,
+  ): number {
     const content = this.contents[report];
     let delta = 0;
+    let allRowsUpdated = false;
 
     if (refresh.vcolumnList) {
       content.columnList = content.columnList
         .map((uuid) => ({ uuid: uuid, submissiontime: this.columns[uuid].submissiontime }))
         .sort((a, b) => isBefore2Sort(a, b, 'submissiontime', 'uuid'))
         .map((x) => x.uuid);
+      // any column change affects all rows in the report
+      allRowsUpdated = true;
     }
 
     if (refresh.vrowList) {
@@ -756,10 +734,17 @@ export class FWReports {
           delta += column.hasConflict ? 1 : 0;
         }
       });
+      // any column change affects all rows in the report
+      allRowsUpdated = true;
+    }
+
+    if (allRowsUpdated) {
+      content.rowList.forEach((uuid) => (rowUpdates[uuid] = report));
     }
 
     if (refresh.vrows) {
       refresh.vrows.entries().forEach(([uuid, refr]) => {
+        rowUpdates[uuid] = report;
         const raw = this.rows[uuid];
         const row = content.rows[uuid];
         if (refr.varchived) row.archived = resolveHistory1(raw.archived).archived;
@@ -793,16 +778,20 @@ export class FWReports {
 
     // process new messages
     const refresh = new Refresh(this);
+    // {row_uuid: report_uuid}
+    /* note that this is a useful structure for collecting updates, but we'll need to reshape during
+       joiner calculation */
+    const rowUpdates: UuidRecord<Uuid> = {};
     let msg;
     while ((msg = this.recvd.shift())) {
       if (msg.type !== 'report') continue;
-      this.processReport(msg, refresh);
+      this.processReport(msg, refresh, rowUpdates);
     }
 
     // rebuild content changes
     if (refresh.vcontents) {
       refresh.vcontents.entries().forEach(([report, content]) => {
-        const delta = this.rebuildContent(report, content);
+        const delta = this.rebuildContent(report, content, rowUpdates);
         if (delta !== 0) {
           refresh.summaries().g(report);
           this.summaries[report].conflicts += delta;
@@ -835,6 +824,15 @@ export class FWReports {
       });
     }
 
+    // flush changes to the index
+    if (!this.index) {
+      // first time: index initial build
+      this.index = this.indexFirstBuild();
+    } else {
+      // after first time: index incremental update
+      this.indexUpdate(rowUpdates);
+    }
+
     // send the onSync event
     if (!this.onSyncSent) {
       this.onSyncSent = true;
@@ -844,6 +842,98 @@ export class FWReports {
         }
       });
     }
+  }
+
+  private indexFirstBuild(): JoinedIndex {
+    // create joiners for every row of every report
+    const joiners: Joiner[] = [];
+    Object.entries(this.contents).forEach(([report, content]) => {
+      const summary = this.summaries[report];
+      joiners.push(...this.joinersForReport(summary, content, content.rowList));
+    });
+    return new JoinedIndex(joiners);
+  }
+
+  private indexUpdate(rowUpdates: UuidRecord<Uuid>): void {
+    // {report_uuid: row_uuids[]}
+    const rowsByReport: UuidRecord<Uuid[]> = {};
+    // reshape rowUpdates from incremental-friendly shape to report-then-rows shape.
+    Object.entries(rowUpdates).forEach(([row, report]) =>
+      setdefault<string[]>(rowsByReport, report, []).push(row),
+    );
+    const joiners: Joiner[] = [];
+    // process each report
+    Object.entries(rowsByReport).forEach(([report, rows]) => {
+      const summary = this.summaries[report];
+      const content = this.contents[report];
+      joiners.push(...this.joinersForReport(summary, content, rows));
+    });
+    // pass updated joiners to the index
+    this.index!.update(joiners);
+  }
+
+  private joinersForReport(
+    summary: FWReportSummary,
+    content: FWReportContent,
+    rows: Uuid[],
+  ): Joiner[] {
+    const report = summary.uuid;
+    const archived = summary.archived;
+    // {column_name: column_uuid}
+    const cols = this.readColumnsReverse(content);
+    const colClip = cols['__clip__'];
+    const colEpisode = cols['__episode__'];
+    const colScene = cols['__scene__'];
+    const colTake = cols['__take__'];
+    const colCamera = cols['__camera__'];
+    const joiners: Joiner[] = [];
+    rows.forEach((row) => {
+      const fw = content.rows[row];
+      const cells = fw.cells;
+      const j: Joiner = {
+        report: report,
+        row: row,
+        archived: archived || fw.archived,
+      };
+      const valClip = colClip && cells[colClip]?.text;
+      const valEpisode = colEpisode && cells[colEpisode]?.text;
+      const valScene = colScene && cells[colScene]?.text;
+      const valTake = colTake && cells[colTake]?.text;
+      const valCamera = colCamera && cells[colCamera]?.text;
+      if (valClip) j.clip = valClip;
+      if (valEpisode) j.episode = valEpisode;
+      if (valScene) j.scene = valScene;
+      if (valTake) j.take = valTake;
+      if (valCamera) j.camera = valCamera;
+      joiners.push(j);
+    });
+    return joiners;
+  }
+
+  readColumns(content: FWReportContent): Record<Uuid, string> {
+    // read columns in order, prefering the first
+    // {column_uuid, column_name}
+    const output: Record<Uuid, string> = {};
+    content.columnList.forEach((column) => {
+      const fw = content.columns[column];
+      if (fw.archived) return;
+      if (fw.name in output) return;
+      output[column] = fw.name;
+    });
+    return output;
+  }
+
+  private readColumnsReverse(content: FWReportContent): Record<string, Uuid> {
+    // read columns in order, prefering the first
+    // {column_name, column_uuid}
+    const output: Record<string, Uuid> = {};
+    content.columnList.forEach((column) => {
+      const fw = content.columns[column];
+      if (fw.archived) return;
+      if (fw.name in output) return;
+      output[fw.name] = column;
+    });
+    return output;
   }
 
   close(): void {

@@ -20,7 +20,7 @@ export type RecvFailure = {
   success: false;
 };
 
-type RecvMsgCommon = {
+export type RecvMsgCommon = {
   srv_id: number;
   seqno: number;
   mux_id: number;
@@ -55,7 +55,7 @@ export type RecvUser = RecvMsgCommon & {
   account: Uuid;
   submissiontime: Date;
   authortime: Date;
-  archivetime: Date;
+  archivetime: unknown;
 };
 
 type ReportNew = {
@@ -339,4 +339,76 @@ export class Unresolved {
 export function tob64(s: string): string {
   // from https://developer.mozilla.org/en-US/docs/Glossary/Base64#the_unicode_problem
   return btoa(String.fromCodePoint(...new TextEncoder().encode(s)));
+}
+
+export function setdefault<T>(obj: Record<string, T>, key: string, dfault: T): T {
+  if (key in obj) {
+    return obj[key];
+  } else {
+    obj[key] = dfault;
+    return dfault;
+  }
+}
+
+export function objectPop<K extends string | number, V>(obj: Record<K, V>, key: K): V | undefined {
+  const val = obj[key];
+  if (val) delete obj[key];
+  return val;
+}
+
+// R: "r"efresh type
+// T: the content "t"ype
+export class RefreshRecord<R, T> {
+  vmem: UuidRecord<R>;
+  private fw: UuidRecord<T>;
+  private newR: (t: T) => R;
+
+  constructor(fw: UuidRecord<T>, newR: (t: T) => R) {
+    this.vmem = {};
+    this.fw = fw;
+    this.newR = newR;
+  }
+
+  /* "get". Plain g() is for when key is guaranteed to be in fw.
+
+     This is true in FWReports because there
+     are explicit create and update operation types, and we don't need to refresh after the create
+     operations. */
+  g(key: Uuid): R {
+    let r = this.vmem[key];
+    let t = this.fw[key];
+    if (!r) {
+      // @ts-expect-error get out of the way, typescript
+      t = Array.isArray(t) ? [...t] : { ...t };
+      r = this.newR(t);
+      this.vmem[key] = r;
+      this.fw[key] = t;
+    }
+    return r;
+  }
+
+  /* g2 is for when key may not be in fw.
+
+     This is true in FWJoinedReports because we walk down the tree we creating nodes as we go. */
+  g2(key: Uuid, onNew: (key: Uuid) => T): [R, T] {
+    let r = this.vmem[key];
+    let t = this.fw[key];
+    if (!r) {
+      // @ts-expect-error get out of the way, typescript
+      if (t) t = Array.isArray(t) ? [...t] : { ...t };
+      else t = onNew(key);
+      r = this.newR(t);
+      this.vmem[key] = r;
+      this.fw[key] = t;
+    }
+    return [r, t];
+  }
+
+  keys(): Uuid[] {
+    return Object.keys(this.vmem);
+  }
+
+  entries(): [Uuid, R][] {
+    return Object.entries(this.vmem);
+  }
 }

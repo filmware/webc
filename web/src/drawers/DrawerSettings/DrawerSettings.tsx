@@ -32,7 +32,7 @@ function DrawerSettings({ open, onClose }: Props) {
           <Segmented
             options={MODE_OPTIONS}
             value={userMode}
-            onChange={(v) => themeStore.setUserMode(v)}
+            onChange={(v) => themeStore.setUserMode(v as Mode)}
           />
         </FormItem>
       </Form>

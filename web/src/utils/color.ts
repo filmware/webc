@@ -1,7 +1,6 @@
 // import { GLASBEY } from '@/constants/colors';
 
 import { isString, percentString } from './data';
-import md5 from './md5';
 
 const HEX = '[0-9a-f]';
 const NUM = '-?\\d+\\.?\\d*';
@@ -284,8 +283,25 @@ class Color {
   }
 }
 
+function colorHash(s: string): string {
+  // emtpy string is black
+  if (s.length === 0) return '000000';
+  /* the djb2 algorithm doesn't normally populate the higher bits immediately, but we need that for
+     color randomness, so we "seed" the hash by duplicating the first few characters */
+  s = s[0] + s[1 % s.length] + s[2 % s.length] + s[3 % s.length] + s;
+  let x = 0;
+  for (const c of s) {
+    // this is the xor form of the djb2 hash, see www.cse.yorku.ca/~oz/hash.html
+    x = Math.trunc((x * 33) % Number.MAX_SAFE_INTEGER ^ (c.codePointAt(0) as number));
+  }
+  // pad string to guarantee minimum of 6 characters
+  const hex = '000000' + x.toString(16);
+  // the last 6 characters will be the most volatile
+  return hex.substring(hex.length - 6, hex.length);
+}
+
 export function stringToColor(str: string): Color {
-  return new Color(md5(str).substring(0, 6));
+  return new Color(colorHash(str));
 }
 
 export default Color;

@@ -1,0 +1,44 @@
+name: ci-web
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+      - name: setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '21.5'
+      - name: install dependencies
+        run: cd web && npm ci
+      - name: build
+        run: cd web && npm run build
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+      - name: setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '21.5'
+      - name: install dependencies
+        run: cd web && npm ci
+      - name: lint
+        run: cd web && npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+      - name: setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '21.5'
+      - name: install dependencies
+        run: cd web && npm ci
+      - name: test
+        run: cd web && npm run test run

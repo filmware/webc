@@ -13,6 +13,15 @@ import {
 } from './compilers';
 import { ConnectionState, ConnectionStatus, FWConnection, FWConnectionWS } from './conn';
 import {
+  FWEpisode,
+  FWJoinedCell,
+  FWJoinedRow,
+  FWJoinedTable,
+  FWJoinedTableResult,
+  FWScene,
+  FWTake,
+} from './join';
+import {
   FWCell,
   FWColumn,
   FWReportContent,
@@ -45,6 +54,13 @@ export type {
   FWReportsList,
   FWReportSummary,
   FWRow,
+  // join,
+  FWJoinedCell,
+  FWJoinedRow,
+  FWTake,
+  FWScene,
+  FWEpisode,
+  FWJoinedTableResult,
   // conn
   ConnectionState,
   ConnectionStatus,
@@ -65,6 +81,8 @@ export {
   FWTopics,
   // reports
   FWReports,
+  // join
+  FWJoinedTable,
   // conn
   FWConnectionWS,
 };

@@ -2,3 +2,4 @@ aiohttp
 asyncpg
 argon2-cffi
 devcluster
+defusedxml

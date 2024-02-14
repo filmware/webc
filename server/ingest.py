@@ -9,8 +9,10 @@ import logging
 import random
 import sys
 import uuid
+import re
 
 import asyncpg
+import defusedxml.ElementTree as ET
 
 
 logging.basicConfig(level=logging.INFO)
@@ -50,23 +52,18 @@ def csvread(file, opts):
     return table
 
 
-def skip_rows_until_first_cell_contains(x, exp):
+def skip_rows_until_row_contains(x, exp):
     """TODO: this should be done on text lines, not on the csv"""
     skip = 0
     for row in x:
-        if row and row[0].startswith(exp):
+        if any(r and exp in r for r in row):
             break
         skip += 1
     return x[skip:]
 
 
-def skip_empty_rows(x):
-    skip = 0
-    for row in x:
-        if any(row):
-            break
-        skip += 1
-    return x[skip:]
+def drop_empty_rows(x):
+    return [r for r in x if any(r)]
 
 
 def strip_rows(x, start, end):
@@ -142,12 +139,54 @@ def report_with_headers(x):
     }
 
 
+def rename_column(x, src, dst):
+    x["columns"] = [dst if c == src else c for c in x["columns"]]
+    return x
+
+
+def drop_matching_rows(x, column, pattern):
+    p = re.compile(pattern)
+    try:
+        column_idx = x["columns"].index(column)
+    except ValueError:
+        # no such column
+        return x
+    column_uuid = x["column_uuids"][column_idx]
+    rows = x["rows"]
+    # go in reverse order so popping while iterating is safe
+    for i in reversed(range(len(x["rows"]))):
+        cell = rows[i].get(column_uuid)
+        if cell is None:
+            continue
+        if p.search(cell) is not None:
+            # drop this row
+            rows.pop(i)
+            x["row_uuids"].pop(i)
+    return x
+
+
+def regex_column(x, column, pattern, replace):
+    p = re.compile(pattern)
+    try:
+        column_idx = x["columns"].index(column)
+    except ValueError:
+        # no such column
+        return x
+    column_uuid = x["column_uuids"][column_idx]
+    for row in x["rows"]:
+        cell = row.get(column_uuid)
+        if cell is None:
+            continue
+        row[column_uuid] = p.sub(replace, cell)
+    return x
+
+
 def follow_steps(x, steps):
     for step in steps:
-        if step[0] == "skip-rows-until-first-cell-contains":
-            x = skip_rows_until_first_cell_contains(x, step[1])
-        elif step[0] == "skip-empty-rows":
-            x = skip_empty_rows(x, step[1], step[2])
+        if step[0] == "skip-rows-until-row-contains":
+            x = skip_rows_until_row_contains(x, step[1])
+        elif step[0] == "drop-empty-rows":
+            x = drop_empty_rows(x)
         elif step[0] == "strip-rows":
             x = strip_rows(x, step[1], step[2])
         elif step[0] == "strip-cells":
@@ -156,6 +195,12 @@ def follow_steps(x, steps):
             x = subtable(x, row=step[1], col=step[2])
         elif step[0] == "report-with-headers":
             x = report_with_headers(x)
+        elif step[0] == "rename-column":
+            x = rename_column(x, src=step[1], dst=step[2])
+        elif step[0] == "drop-matching-rows":
+            x = drop_matching_rows(x, column=step[1], pattern=step[2])
+        elif step[0] == "regex-column":
+            x = regex_column(x, column=step[1], pattern=step[2], replace=step[3])
         else:
             raise ValueError(f"unrecognized step '{step}'")
     return x
@@ -163,6 +208,36 @@ def follow_steps(x, steps):
 
 def ingest_all(table, reports):
     return [follow_steps(table, steps) for steps in reports]
+
+
+def xmlread_scripte(file):
+    root = ET.parse(file).getroot()
+    assert root.tag == "ScriptEMetaData", root.tag
+    shots = [child for child in root if child.tag == "ShotProperties"]
+    # find all the columns, preserving order as best we can
+    columns = []
+    columns_seen = set()
+    for shot in shots:
+        for i in shot:
+            if i.tag not in columns_seen:
+                columns.append(i.tag)
+                columns_seen.add(i.tag)
+    # extract into a table
+    table = [columns]
+    for shot in shots:
+        rdict = {}
+        for i in shot:
+            # does this element have children?
+            if bool(i):
+                # looks like this is just RelatedScenes
+                cell = ",".join(x.text for x in iter(i))
+            else:
+                cell = i.text or ""
+            rdict[i.tag] = cell
+        row = [rdict.get(c, "") for c in columns]
+        table.append(row)
+
+    return table
 
 
 def print_result(result):
@@ -188,10 +263,11 @@ def print_result(result):
     def cellify(s, w):
         if s is None:
             s = ""
-        s = s.replace(" ", "·")
-        if len(s) < w:
-            return s + " "*(w - len(s))
-        if len(s) > w:
+        l = len(s)
+        s = s.replace(" ", "\x1b[90m·\x1b[m")
+        if l < w:
+            return s + " "*(w - l)
+        if l > w:
             return s[:w]
         return s
 
@@ -257,8 +333,46 @@ async def save(results):
             datetime.datetime.now(),
         )
 
+def detect_kind(file):
+    with open(file) as f:
+        text = f.read()
+
+    lines = text.splitlines()
+
+    # xml?
+    if "<?xml" in lines[0]:
+        return "scripte-xml"
+
+    # tab-separated?
+    if text.count("\t") > text.count(","):
+        return "cantar"
+
+    # zaxcom has some header data, with their brand name in the first line
+    if "Zaxcom" in lines[0]:
+        return "zaxcom"
+
+    # ltfs contains a subtable with a "Software" column that contains "LTFS" in the value
+    if "Software" in lines[0] and "LTFS" in lines[1]:
+        return "ltfs"
+
+    # silverstack is really pitching shothub
+    if "ShotID" in lines[0] and "Shothub Link" in lines[0]:
+        return "silverstack"
+
+    # zoelog puts all of its headers in quotes
+    if '"Camera"' in lines[0]:
+        return "zoelog"
+
+    # dailies report has timecodes, but scripte does not
+    if "Timecode" in lines[0]:
+        return "nextlab"
+
+    return "scripte-csv"
+
 
 def main(kind, file, want_save):
+    kind = kind or detect_kind(file)
+
     standard = {
         "csvread": {},
         "reports": [
@@ -269,19 +383,84 @@ def main(kind, file, want_save):
     }
 
     kindmap = {
-        "standard": standard,
-        "zoelog": standard,
-        "nextlab": standard,
-        "silverstack": standard,
+        "zoelog": {
+            "csvread": {},
+            "reports": [
+                [
+                    ["report-with-headers"],
+                    ["rename-column", "Episode", "__episode__"],
+                    ["rename-column", "Scene", "__scene__"],
+                    ["rename-column", "Take", "__take__"],
+                    ["rename-column", "Camera", "__camera__"],
+                ]
+            ]
+        },
+        "nextlab": {
+            "csvread": {},
+            "reports": [
+                [
+                    ["report-with-headers"],
+                    ["rename-column", "Episode", "__episode__"],
+                    ["rename-column", "Scene", "__scene__"],
+                    ["rename-column", "Take", "__take__"],
+                    ["rename-column", "Camera", "__camera__"],
+                    ["rename-column", "Start Timecode", "__tcstart__"],
+                    ["rename-column", "End Timecode", "__tcend__"],
+                ]
+            ]
+        },
+        "silverstack": {
+            "csvread": {},
+            "reports": [
+                [
+                    ["report-with-headers"],
+                    ["drop-matching-rows", "ShotID", "^$"],
+                    ["regex-column", "Camera", "_$", ""],
+                    ["rename-column", "Name", "__clip__"],
+                    ["rename-column", "Camera", "__camera__"],
+                ]
+            ]
+        },
         "scripte-csv": standard,  # we probably want the xml format instead
+        "scripte-xml": {
+            "xmlread": "scripte",
+            "reports": [
+                [
+                    ["report-with-headers"],
+                    ["rename-column", "Slate", "__scene__"],
+                    ["rename-column", "Take", "__take__"],
+                    ["rename-column", "Camera", "__camera__"],
+                ]
+            ]
+        },
         "zaxcom": {
             "csvread": {},
             "reports": [
                 [
-                    ["skip-rows-until-first-cell-contains", "FileID"],
+                    ["skip-rows-until-row-contains", "FileID"],
                     ["strip-rows", 0, -1],
                     ["strip-cells", 0, -1],
                     ["report-with-headers"],
+                    ["rename-column", "Scene", "__scene__"],
+                    ["rename-column", "Take", "__take__"],
+                    ["rename-column", "TimeCode", "__tcstart__"],
+                ]
+            ]
+        },
+        "cantar": {
+            "csvread": {"delimiter": "\t"},
+            "reports": [
+                [
+                    ["skip-rows-until-row-contains", "Index"],
+                    ["strip-rows", 0, -1],
+                    ["strip-cells", 0, -1],
+                    ["drop-empty-rows"],
+                    ["report-with-headers"],
+                    ["rename-column", "Episode", "__episode__"],
+                    ["rename-column", "Scene", "__scene__"],
+                    ["rename-column", "Take", "__take__"],
+                    ["rename-column", "TC Start", "__tcstart__"],
+                    ["rename-column", "TC End", "__tcend__"],
                 ]
             ]
         },
@@ -293,7 +472,7 @@ def main(kind, file, want_save):
                     ["report-with-headers"],
                 ],
                 [
-                    ["skip-rows-until-first-cell-contains", "Shoot Day"],
+                    ["skip-rows-until-row-contains", "Shoot Day"],
                     ["report-with-headers"],
                 ]
             ]
@@ -305,7 +484,14 @@ def main(kind, file, want_save):
 
     spec = kindmap[kind]
 
-    table = csvread(file, opts=spec["csvread"])
+    if "csvread" in spec:
+        table = csvread(file, opts=spec["csvread"])
+    elif "xmlread" in spec:
+        # don't have enough xml to know how to generalize
+        assert spec["xmlread"] == "scripte", spec
+        table = xmlread_scripte(file)
+    else:
+        raise ValueError("invalid spec:", spec)
 
     results = ingest_all(table, spec["reports"])
 
@@ -321,7 +507,7 @@ def main(kind, file, want_save):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("kind")
+    p.add_argument("kind", nargs="?")
     p.add_argument("file")
     p.add_argument("--save", action="store_true")
     args = p.parse_args(sys.argv[1:])

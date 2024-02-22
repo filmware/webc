@@ -46,7 +46,7 @@ class StreamStore {
   constructor(localStorage: LocalStorageStore) {
     this.#localStorage = localStorage;
 
-    this.#connection = new FWConnectionWS('ws://localhost:8080/ws');
+    this.#connection = new FWConnectionWS(import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080/ws');
     this.#connection.onExpire = () => this.authenticated.set(false);
     this.status = this.#connection.status;
   }

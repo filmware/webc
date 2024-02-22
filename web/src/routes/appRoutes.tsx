@@ -5,7 +5,9 @@ class AppRoutes {
 
   init(app: React.ReactNode) {
     // match everything with "*"
-    this.#router = createBrowserRouter([{ element: app, path: '*' }]);
+    this.#router = createBrowserRouter([{ element: app, path: '*' }], {
+      basename: import.meta.env.VITE_BASE_PATH,
+    });
     return this.#router;
   }
 

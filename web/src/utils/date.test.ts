@@ -13,7 +13,7 @@ describe('Date Utilities', () => {
   describe('timeFormat', () => {
     const date = new Date('2023-12-19T12:34:00.000Z');
 
-    it('should format time', () => {
+    it('should format time locally', () => {
       expect(utils.timeFormat(date)).toBe('05:34 AM');
     });
 

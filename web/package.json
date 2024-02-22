@@ -19,7 +19,7 @@
     "format-check": "npm run format-check:js && npm run format-check:css",
     "format-check:js": "prettier --check \"src/**/*.{js,jsx,ts,tsx}\"",
     "format-check:css": "prettier --check \"src/**/*.{css,less,scss}\"",
-    "test": "vitest",
+    "test": "TZ=America/Denver vitest",
     "preview": "vite preview"
   },
   "dependencies": {

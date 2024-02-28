@@ -67,47 +67,49 @@ async def waitgroup(*coros):
     """
 
     tasks = [
-        asyncio.create_task(c) for c in coros if asyncio.iscoroutine(c)
+        asyncio.create_task(c) if asyncio.iscoroutine(c) else c for c in coros
     ]
     exc = None
-    while exc is None:
+    while tasks and exc is None:
         try:
             done, pending = await asyncio.wait(
                 tasks, return_when=asyncio.FIRST_EXCEPTION
             )
         except asyncio.CancelledError as e:
+            # the waitgroup itself was canceled
             exc = e
             break
 
-        if not pending:
-            # success!
-            return
-
         # grab the first exception
+        # (but visit every task to avoid "exception was never retrieved" errors)
         for task in done:
-            if task.exception() is None:
-                continue
-            if isinstance(task.exception(), asyncio.CancelledError):
+            try:
+                if task.exception() is None:
+                    continue
+            except asyncio.CancelledError:
                 # ignore Cancelled errors.
                 continue
-            # found the first exception
-            exc = task.exception()
-            break
+            if exc is None:
+                # found the first exception
+                exc = task.exception()
 
-    for task in tasks:
-        task.cancel()
+        tasks = pending
 
-    # absolutely refuse to not wait on all our children
-    while True:
-        try:
-            await asyncio.wait(
-                tasks, return_when=asyncio.ALL_COMPLETED
-            )
-            break
-        except asyncio.CancelledError:
-            continue
+    if tasks:
+        # absolutely refuse to not wait on all our children
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            try:
+                # wait on this task
+                await task
+                # discard exception
+                _ = task.exception()
+            except asyncio.CancelledError:
+                pass
 
-    raise exc
+    if exc:
+        raise exc
 
 
 #### begin server ####

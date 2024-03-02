@@ -458,6 +458,7 @@ export type FWEpisode = {
 };
 
 export type FWJoinedTableResult = {
+  columns: string[];
   episodeList: string[];
   episodes: Record<string, FWEpisode>;
 };
@@ -534,6 +535,7 @@ class RefreshEpisode {
 class Refresh {
   vepisodeList?: true;
   vepisodes?: RefreshRecord<RefreshEpisode, FWEpisode>;
+  vcolumns?: true;
 
   private fw: FWJoinedTableResult;
 
@@ -556,6 +558,10 @@ class Refresh {
     if (this.vepisodeList) return;
     this.vepisodeList = true;
     this.fw.episodeList = [...this.fw.episodeList];
+  }
+
+  columns(): void {
+    this.vcolumns = true;
   }
 }
 
@@ -660,6 +666,8 @@ export class FWJoinedTable {
 
   // our own copy of the rows
   private rows: Record<number, FWJoinedRow> = {};
+  // when count reaches zero it is removed from columns
+  private columnCounts: Record<string, number> = {};
 
   close(): void {
     if (this.closed) return;
@@ -676,6 +684,7 @@ export class FWJoinedTable {
 
     // bootstrap an empty result
     this.result = {
+      columns: [],
       episodeList: [],
       episodes: {},
     };
@@ -772,6 +781,39 @@ export class FWJoinedTable {
     return out;
   }
 
+  private addColumns(row: FWJoinedRow, refresh: Refresh): void {
+    Object.keys(row.cells).forEach((column) => {
+      const count = this.columnCounts[column];
+      if (count === undefined) {
+        // add column
+        this.columnCounts[column] = 1;
+        // configure refresh
+        refresh.columns();
+      } else {
+        // increment existing count
+        this.columnCounts[column] = count + 1;
+      }
+    });
+  }
+
+  private dropColumns(row: FWJoinedRow, refresh: Refresh): void {
+    Object.keys(row.cells).forEach((column) => {
+      const count = this.columnCounts[column];
+      if (count === undefined) {
+        // this must not occur
+        throw new Error(`invalid column count when deleting "${column}"`);
+      }
+      if (count === 1) {
+        // drop the column
+        delete this.columnCounts[column];
+        // configure refresh
+        refresh.columns();
+      } else {
+        this.columnCounts[column] = count - 1;
+      }
+    });
+  }
+
   private update(updates: number[]): void {
     this.result = { ...this.result };
     const refresh = new Refresh(this.result);
@@ -790,6 +832,8 @@ export class FWJoinedTable {
         // this update is not join-affecting (that's why we have the same serial for old and now)
         const row = newRows[n];
         this.rows[n] = row;
+        this.addColumns(row, refresh);
+        this.dropColumns(old, refresh);
         this.processRow(refresh, row, replaceRow);
         return;
       }
@@ -797,6 +841,7 @@ export class FWJoinedTable {
       if (old) {
         // remove the old
         delete this.rows[n];
+        this.dropColumns(old, refresh);
         this.processRow(refresh, old, deleteRow);
       }
 
@@ -804,6 +849,7 @@ export class FWJoinedTable {
         // insert the new
         const row = newRows[n];
         this.rows[n] = row;
+        this.addColumns(row, refresh);
         this.processRow(refresh, row, appendRow);
       }
     });
@@ -889,5 +935,28 @@ export class FWJoinedTable {
         (e) => parseScene(e),
       );
     }
+
+    if (refresh.vcolumns) {
+      // create a fresh column list
+      this.result.columns = Object.keys(this.columnCounts).sort(cmpColumn);
+    }
   }
+}
+
+const columnScore: Record<string, number> = {
+  __episode__: 1,
+  __scene__: 2,
+  __take__: 3,
+  __camera__: 4,
+  __clip__: 5,
+};
+
+function cmpColumn(a: string, b: string) {
+  const scoreA = columnScore[a] ?? 100;
+  const scoreB = columnScore[b] ?? 100;
+  if (scoreA !== scoreB) {
+    return scoreA < scoreB ? -1 : 1;
+  }
+  // equality case not needed, since we're sorting an Object.keys()
+  return a < b ? -1 : 1;
 }

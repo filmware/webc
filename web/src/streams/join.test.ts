@@ -339,6 +339,15 @@ describe('JoinedIndex', () => {
           note: { r1w1: 'bad' },
         },
       ]);
+
+      expect(result.columns).toStrictEqual([
+        '__scene__',
+        '__take__',
+        '__camera__',
+        '__clip__',
+        'lens',
+        'note',
+      ]);
     }
 
     // apply an update to a joining row
@@ -399,6 +408,75 @@ describe('JoinedIndex', () => {
           __clip__: { r3w1: 'clipA1', r4w1: 'clipA1' },
           note: { r4w1: 'd1' },
         },
+      ]);
+
+      expect(result.columns).toStrictEqual([
+        '__scene__',
+        '__take__',
+        '__camera__',
+        '__clip__',
+        'lens',
+        'note',
+      ]);
+    }
+
+    // archive a row that will drop a column (in this case, the 'lens' column)
+    reportSub.put({
+      ...msgCommon(),
+      type: 'report',
+      project: 'project1',
+      report: 'report2',
+      version: 'report2v2',
+      operation: {
+        operation: 'archive-row',
+        uuid: 'r2w1',
+        value: true,
+      },
+      modifies: ['report2v1'],
+      reason: 'unit test',
+      user: 'user1',
+    });
+
+    {
+      const result: FWJoinedTableResult = await new Promise((result) =>
+        jt.observable.subscribe((x) => result(x)),
+      );
+      expect(result.episodeList).toStrictEqual(['']);
+
+      const episode = result.episodes[''];
+      expect(episode.noScene).toStrictEqual([]);
+      expect(episode.sceneList).toStrictEqual(['1', '2']);
+
+      const s1 = episode.scenes['1'];
+      expect(s1.noTake).toStrictEqual([]);
+      expect(s1.takeList).toStrictEqual(['1']);
+      expect(extract(s1.takes[1])).toStrictEqual([
+        {
+          __scene__: { r1w1: '1' },
+          __take__: { r1w1: '1' },
+          note: { r1w1: 'bad' },
+        },
+      ]);
+
+      const s2 = episode.scenes['2'];
+      expect(s2.noTake).toStrictEqual([]);
+      expect(s2.takeList).toStrictEqual(['1']);
+      expect(extract(s2.takes[1])).toStrictEqual([
+        {
+          __camera__: { r3w1: 'a' },
+          __scene__: { r4w1: '2' },
+          __take__: { r4w1: '1' },
+          __clip__: { r3w1: 'clipA1', r4w1: 'clipA1' },
+          note: { r4w1: 'd1' },
+        },
+      ]);
+
+      expect(result.columns).toStrictEqual([
+        '__scene__',
+        '__take__',
+        '__camera__',
+        '__clip__',
+        'note',
       ]);
     }
   }, 100); // 100ms timeout

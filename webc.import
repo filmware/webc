@@ -1,0 +1,5 @@
+webc_sbrk
+webc_getrandom
+webc_setjmp
+webc_longjmp
+webc_print

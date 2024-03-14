@@ -1,0 +1,49 @@
+webc:
+
+    A subset of libc that plays nicely with wasm.
+
+    If libc makes C suitable for writing applications (business logic + IO),
+    webc makes C suitable for writing functions (only business logic).
+
+    The subset of libc that is implemented are the functions that are useful to
+    a library designed for pure business logic, like libexpat, which does xml
+    parsing but has practically no IO capability built into it.  A sandboxed
+    lua environment (without the io or os module) is another good example of
+    pure business logic written in C.
+
+Philosophy:
+
+    webc tries to be as simple and understandable as possible.  In fact,
+    keeping things simple is the only reason to use webc.
+
+    Emscripten introduces a fake filesystem concept and a half dozen other
+    concepts and APIs.  I don't want to learn those things; I just want to call
+    C functions from Javascript.
+
+    WASI is an attempt at standardizing how web assembly should be able to
+    integrate with the operating system when embedded in various languages.
+    But I don't want wasm to have OS features in the first place.  Business
+    logic written in C can already be called from nearly any language.
+    Webassembly is merely the link between C and Javascript, and WASI only
+    confuses that fact.
+
+Implementation:
+
+  - doug lea's malloc
+        https://gee.cs.oswego.edu/dl/html/malloc.html
+
+  - stb's sprintf
+        https://github.com/nothings/stb/blob/master/stb_sprintf.h
+
+  - our own variations of:
+      - setjmp
+      - sbrk
+      - locale (a non-implementation, really)
+
+  - really basic implementations of most other things
+
+links:
+
+  - wasm tool-conventions
+        https://github.com/WebAssembly/tool-conventions/
+        contains good low level details of how c translates to the wasm vm

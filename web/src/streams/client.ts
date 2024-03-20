@@ -1,6 +1,11 @@
 import { AdvancerNoFail, RecvMsg, RecvMsgAll, RecvMsgOrSync, SubscriptionSpec } from './utils';
 import { WebSock } from './websock';
 
+import { newIngestWorker, noop } from '@/ingest/ingest';
+
+// newIngestWorker();
+noop();
+
 /* FWClient is the logical unit of synchronization.  It is an interface because it can be
    implemented either directly over a websocket or through a replicator built around an IndexedDB,
    or through a port to SharedWorker. */

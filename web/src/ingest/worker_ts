@@ -1,3 +1,5 @@
+import { FWClient } from '@/streams';
+
 // import wasmUrl from './ingest.wasm?url';
 // import init from './ingest.wasm?init';
 
